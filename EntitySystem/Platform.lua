@@ -1,8 +1,12 @@
 local tween = require "engine.Utils.tween"
+local Camera = require "engine.EntitySystem.Camera"
 local Platform = {}
 
 Platform.list = {}
 Platform.currentLayer = 1
+
+Platform._sortedDirty = true
+Platform._sortedList = {}
 
 -- layer 0 = background
 -- layer 1 = gameplay
@@ -34,6 +38,66 @@ local function makeRock(w, h)
     return pts
 end
 
+local function rebuildTileQuadCache(platform, texW, texH)
+    local quads = {}
+    for py = 0, platform.h - 1, texH do
+        for px = 0, platform.w - 1, texW do
+            local drawW = math.min(texW, platform.w - px)
+            local drawH = math.min(texH, platform.h - py)
+            quads[#quads + 1] = {
+                quad = love.graphics.newQuad(0, 0, drawW, drawH, texW, texH),
+                x = px,
+                y = py,
+            }
+        end
+    end
+    return quads
+end
+
+local function rebuildMeshCache(platform, texture)
+    local vertices = {}
+    local texW, texH = texture:getDimensions()
+
+    for i = 1, #platform.shape, 2 do
+        local vx = platform.shape[i]
+        local vy = platform.shape[i + 1]
+        local u = vx / texW
+        local v = vy / texH
+        vertices[#vertices + 1] = { vx, vy, u, v }
+    end
+
+    local mesh = love.graphics.newMesh(vertices, "fan", "static")
+    mesh:setTexture(texture)
+    return mesh
+end
+
+local function ensureCache(platform)
+    local texture = platform.texture
+
+    if platform.shape then
+        if texture and platform._cacheTex ~= texture then
+            platform._mesh = rebuildMeshCache(platform, texture)
+            platform._cacheTex = texture
+            if platform.tileTexture then
+                texture:setWrap("repeat", "repeat")
+            end
+        end
+        return
+    end
+
+    if texture and platform.tileTexture and not platform.isCircle then
+        local texW, texH = texture:getDimensions()
+
+        if platform._cacheTex ~= texture or platform._cacheW ~= platform.w or platform._cacheH ~= platform.h then
+            texture:setWrap("repeat", "repeat")
+            platform._quads = rebuildTileQuadCache(platform, texW, texH)
+            platform._cacheTex = texture
+            platform._cacheW = platform.w
+            platform._cacheH = platform.h
+        end
+    end
+end
+
 function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visible, breakable, breakSide, onBreak, tileTexture, layer, pushable)
     local Player = require("entities.Player")
     local platform = {
@@ -55,6 +119,8 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         broken = false,
         rotation = 0,
         pushable = (pushable == nil) and false or pushable,
+        cornerRadiusX = 0,
+        cornerRadiusY = 0,
     }
 
     platform.isCircle = false
@@ -78,6 +144,7 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
                 = false -> escala a textura inteira pro tamanho do platform (sprite unico, ex: arvore)
     rotation = radianos, rotaciona em torno do centro do platform (apenas visual, não afeta a colisão AABB)
     pushable = true/false, se a plataforma pode ser empurrada pelo player
+    cornerRadiusX/Y = arredondamento visual dos cantos (apenas visual, não afeta a colisão AABB)
     ]]
 
     function platform:setRotation(ang)
@@ -98,12 +165,20 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         platform.radius = num
     end
 
+    function platform:setCornerRadius(rx, ry)
+        self.cornerRadiusX = rx or 0
+        self.cornerRadiusY = ry or self.cornerRadiusX
+        return self
+    end
+
     function platform:setPolygon(bool)
         if bool then
             platform.isCircle = false
             platform.radius = 0
 
             platform.shape=makeRock(platform.w,platform.h)
+            platform._mesh = nil
+            platform._cacheTex = nil
         end
     end
 
@@ -131,6 +206,7 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
     end
 
     table.insert(Platform.list, platform)
+    Platform._sortedDirty = true
     return platform
 end
 
@@ -140,143 +216,162 @@ function Platform.changeTexture(platform, newTexturePath)
     platform.texture = newTexture
 end
 
-function Platform.draw()
-    local sortedPlatforms = {}
-    for _, platform in ipairs(Platform.list) do
-        if platform.visible ~= false then
-            table.insert(sortedPlatforms, platform)
+local function stencilFunctionFor(platform, radius)
+    love.graphics.circle("fill", platform.texture:getWidth() / 2, platform.texture:getHeight() / 2, radius)
+end
+
+local function drawCircleTexture(platform, radius)
+    love.graphics.push()
+    love.graphics.translate(platform.x, platform.y)
+    love.graphics.stencil(function() stencilFunctionFor(platform, radius) end, "replace", 1)
+    love.graphics.setStencilTest("greater", 0)
+    love.graphics.draw(platform.texture, 0, 0)
+    love.graphics.setStencilTest()
+    love.graphics.pop()
+end
+
+local function stencilRoundedRectFor(platform, rx, ry)
+    love.graphics.rectangle("fill", 0, 0, platform.w, platform.h, rx, ry)
+end
+
+local function drawRoundedTexture(platform, rx, ry)
+    love.graphics.push()
+    love.graphics.translate(platform.x, platform.y)
+    love.graphics.stencil(function() stencilRoundedRectFor(platform, rx, ry) end, "replace", 1)
+    love.graphics.setStencilTest("greater", 0)
+
+    if platform.tileTexture then
+        for _, q in ipairs(platform._quads) do
+            love.graphics.draw(platform.texture, q.quad, q.x, q.y)
         end
+    else
+        local texW, texH = platform.texture:getDimensions()
+        local scaleX = platform.w / texW
+        local scaleY = platform.h / texH
+        love.graphics.draw(platform.texture, 0, 0, 0, scaleX, scaleY)
     end
 
-    table.sort(sortedPlatforms, function(a, b)
-        return (a.layer or 1) < (b.layer or 1)
-    end)
+    love.graphics.setStencilTest()
+    love.graphics.pop()
+end
 
-    for _, platform in ipairs(sortedPlatforms) do
-        local a = platform.alpha or 1
-        local rotated = (platform.rotation and platform.rotation ~= 0)
-        local radius = platform.radius or 0
-        local cx, cy = platform.x + platform.w / 2, platform.y + platform.h / 2
+function Platform.draw()
+    if Platform._sortedDirty then
+        local sortedPlatforms = {}
+        for _, platform in ipairs(Platform.list) do
+            sortedPlatforms[#sortedPlatforms + 1] = platform
+        end
 
-        local function stencilFunction()
-            if platform.isCircle and platform.radius >= 1 then
-                love.graphics.circle("fill", platform.texture:getWidth()/2, platform.texture:getHeight()/2, radius)
+        table.sort(sortedPlatforms, function(a, b)
+            return (a.layer or 1) < (b.layer or 1)
+        end)
+
+        Platform._sortedList = sortedPlatforms
+        Platform._sortedDirty = false
+    end
+
+    local viewX, viewY, viewW, viewH = 0, 0, math.huge, math.huge
+    if Camera then
+        local scale = Camera.scale or 1
+        viewX = Camera.x or 0
+        viewY = Camera.y or 0
+        viewW = BASE_WIDTH and (BASE_WIDTH / scale) or math.huge
+        viewH = BASE_HEIGHT and (BASE_HEIGHT / scale) or math.huge
+    end
+    local margin = 64
+    local minX, minY = viewX - margin, viewY - margin
+    local maxX, maxY = viewX + viewW + margin, viewY + viewH + margin
+
+    for _, platform in ipairs(Platform._sortedList) do
+        if platform.visible ~= false
+        and platform.x < maxX and platform.x + platform.w > minX
+        and platform.y < maxY and platform.y + platform.h > minY then
+            local a = platform.alpha or 1
+            local rotated = (platform.rotation and platform.rotation ~= 0)
+            local radius = platform.radius or 0
+            local cx, cy = platform.x + platform.w / 2, platform.y + platform.h / 2
+            local isCirc = platform.isCircle and platform.radius >= 1
+            local hasCorner = ((platform.cornerRadiusX or 0) > 0 or (platform.cornerRadiusY or 0) > 0)
+
+            ensureCache(platform)
+
+            if rotated then
+                love.graphics.push()
+                love.graphics.translate(cx, cy)
+                love.graphics.rotate(platform.rotation)
+                love.graphics.translate(-cx, -cy)
             end
-        end
 
-        local function detectCircle()
-            if platform.isCircle and platform.radius >= 1 then
-                return true
-            end
-        end
+            if platform.shape then
+                if platform.texture and platform._mesh then
+                    love.graphics.setColor(1, 1, 1, a)
+                    love.graphics.push()
+                    love.graphics.translate(platform.x, platform.y)
+                    love.graphics.draw(platform._mesh)
+                    love.graphics.pop()
+                else
+                    local points = {}
 
-        local function makeCircle()
-            love.graphics.push()
-            love.graphics.translate(platform.x, platform.y)
-            love.graphics.stencil(stencilFunction, "replace", 1)
-            love.graphics.setStencilTest("greater",0)
-            love.graphics.draw(platform.texture, 0,0)
-            love.graphics.setStencilTest()
-            love.graphics.pop()
-        end
-
-        if rotated then
-            love.graphics.push()
-            love.graphics.translate(cx, cy)
-            love.graphics.rotate(platform.rotation)
-            love.graphics.translate(-cx, -cy)
-        end
-
-        if platform.shape then
-            if platform.texture then
-                local vertices = {}
-                local texW, texH = platform.texture:getDimensions()
-
-                for i = 1, #platform.shape, 2 do
-                    local vx = platform.shape[i]
-                    local vy = platform.shape[i+1]
-
-                    local u = vx / texW
-                    local v = vy / texH
-
-                    table.insert(vertices,{platform.x+vx,platform.y+vy,u,v})
+                    for i = 1,#platform.shape,2 do
+                        points[#points + 1] = platform.x + platform.shape[i]
+                        points[#points + 1] = platform.y + platform.shape[i+1]
+                    end
+                    love.graphics.setColor(1, 1, 1, 1)
+                    love.graphics.polygon("fill", points)
                 end
-
-                local mesh = love.graphics.newMesh(vertices, "fan", "dynamic")
-                mesh:setTexture(platform.texture)
-
-                if platform.tileTexture then
-                    platform.texture:setWrap("repeat", "repeat")
-                end
-
-                love.graphics.setColor(1,1,1,a)
-                love.graphics.draw(mesh)
             else
-                local points = {}
-
-                for i = 1,#platform.shape,2 do
-                    table.insert(points,platform.x+platform.shape[i])
-                    table.insert(points,platform.y+platform.shape[i+1])
-                end
-                love.graphics.polygon("fill", points)
-            end
-        else
-            if platform.texture then
-                love.graphics.setColor(1, 1, 1, a)
-
-                if platform.tileTexture then
-                    platform.texture:setWrap("repeat", "repeat")
-
-                    local texW, texH = platform.texture:getDimensions()
-                    local isCirc = detectCircle()
+                if platform.texture then
+                    love.graphics.setColor(1, 1, 1, a)
 
                     if isCirc then
-                        makeCircle()
-                    else
-                        for px = 0, platform.w - 1, texW do
-                            for py = 0, platform.h - 1, texH do
-                                local drawW = math.min(texW, platform.w - px)
-                                local drawH = math.min(texH, platform.h - py)
-
-                                local quad = love.graphics.newQuad(0, 0, drawW, drawH, texW, texH)
-                                love.graphics.draw(platform.texture, quad, platform.x + px, platform.y + py)
-                            end
+                        drawCircleTexture(platform, radius)
+                    elseif hasCorner then
+                        drawRoundedTexture(platform, platform.cornerRadiusX, platform.cornerRadiusY)
+                    elseif platform.tileTexture then
+                        love.graphics.push()
+                        love.graphics.translate(platform.x, platform.y)
+                        for _, q in ipairs(platform._quads) do
+                            love.graphics.draw(platform.texture, q.quad, q.x, q.y)
                         end
-                    end
-                else
-                    local texW, texH = platform.texture:getDimensions()
-                    local scaleX = platform.w / texW
-                    local scaleY = platform.h / texH
-
-                    if detectCircle() then
-                        makeCircle()
+                        love.graphics.pop()
                     else
+                        local texW, texH = platform.texture:getDimensions()
+                        local scaleX = platform.w / texW
+                        local scaleY = platform.h / texH
                         love.graphics.draw(platform.texture, platform.x, platform.y, 0, scaleX, scaleY)
                     end
-                end
-            else
-                local c = platform.color
-                love.graphics.setColor(c[1], c[2], c[3], a)
-
-                if platform.isCircle and platform.radius >= 1 then
-                    love.graphics.circle("fill", platform.x, platform.y, platform.radius)
                 else
-                    love.graphics.rectangle("fill", platform.x, platform.y, platform.w, platform.h)
+                    local c = platform.color
+                    love.graphics.setColor(c[1], c[2], c[3], a)
+
+                    if isCirc then
+                        love.graphics.circle("fill", platform.x, platform.y, platform.radius)
+                    elseif hasCorner then
+                        love.graphics.rectangle("fill", platform.x, platform.y, platform.w, platform.h, platform.cornerRadiusX, platform.cornerRadiusY)
+                    else
+                        love.graphics.rectangle("fill", platform.x, platform.y, platform.w, platform.h)
+                    end
+                end
+
+                love.graphics.setColor(1, 1, 1, 1)
+                if Platform.debug then
+                    love.graphics.setColor(0, 1, 0, 0.4)
+                    if hasCorner then
+                        love.graphics.rectangle("line", platform.x, platform.y, platform.w, platform.h, platform.cornerRadiusX, platform.cornerRadiusY)
+                    else
+                        love.graphics.rectangle("line", platform.x, platform.y, platform.w, platform.h)
+                    end
+                    love.graphics.setColor(1, 1, 1, 1)
                 end
             end
 
-            love.graphics.setColor(1, 1, 1, 1)
-            if Platform.debug then
-                love.graphics.setColor(0, 1, 0, 0.4)
-                love.graphics.rectangle("line", platform.x, platform.y, platform.w, platform.h)
-                love.graphics.setColor(1, 1, 1, 1)
+            if rotated then
+                love.graphics.pop()
             end
-        end
-
-        if rotated then
-            love.graphics.pop()
         end
     end
+
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 function Platform.destroy(target)
@@ -324,6 +419,8 @@ end
 
 function Platform.clear()
     Platform.list = {}
+    Platform._sortedList = {}
+    Platform._sortedDirty = true
 end
 
 return Platform

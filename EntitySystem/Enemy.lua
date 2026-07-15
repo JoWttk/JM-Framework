@@ -1,8 +1,9 @@
 local Enemy = {}
 Enemy.__index = Enemy
 
-local Text   = require("engine.Interface.text")
-local Signal = require("engine.Utils.signal")
+local Text     = require("engine.Interface.text")
+local Signal   = require("engine.Utils.signal")
+local Platform = require("engine.EntitySystem.Platform")
 
 Enemy.list   = {}
 Enemy.onDied = Signal.new()
@@ -40,6 +41,12 @@ local KNOCKBACK_AOE_RADIUS = 90
 local KNOCKBACK_AOE_SPEED  = 200  
 local KB_FRICTION          = 700
 
+local GRAVITY = 1200  -- mesmo valor usado no Player
+local VOID_Y  = 1500   -- mesmo threshold usado no Player para respawn
+
+local LEDGE_CHECK_AHEAD = 6  -- quanto olhar à frente da borda
+local LEDGE_CHECK_DEPTH = 6  -- quanto olhar abaixo dos pés
+
 function Enemy:new(enemyType, x, y, overrides)
     local templates = {
         walker = {
@@ -55,6 +62,7 @@ function Enemy:new(enemyType, x, y, overrides)
             stompHeight = 16,
             healthBarColor   = {1, 0.35, 0.35},
             healthBarBgColor = {0.35, 0.1, 0.1},
+            noGravity = false
         },
         stomper = {
             name        = "Stomper",
@@ -69,6 +77,7 @@ function Enemy:new(enemyType, x, y, overrides)
             stompHeight = 16,
             healthBarColor   = {1, 0.65, 0.1},
             healthBarBgColor = {0.35, 0.22, 0.03},
+            noGravity = false,
         },
         tank = {
             name        = "Tank",
@@ -83,26 +92,37 @@ function Enemy:new(enemyType, x, y, overrides)
             stompable   = false,
             healthBarColor   = {0.35, 0.55, 1},
             healthBarBgColor = {0.08, 0.12, 0.3},
+            tankAttackRange    = 120,
+            tankChargeSpeed    = 300,
+            tankChargeDuration = 0.3,
+            tankChargeTimer    = 0,
+            tankCharging       = false,
+            tankChargeDir      = 0,
+            tankCooldown       = 2.0,
+            tankCooldownTimer  = 0,
+            noGravity = false,
         },
         shooter = {
             name             = "Shooter",
             health           = 30,  -- 3 ataques para matar
             damage           = 8,
             speed            = 45,
-            width            = 30,
-            height           = 34,
+            width            = 32,
+            height           = 32,
             color            = {0.8, 0.2, 0.8},
             patrolDist       = 150,
             shootCooldown    = 2.5,
             shootTimer       = 2.5, 
             projectileDamage = 35,
             projectileSpeed  = 200,
-            shootRange       = 200,
+            shootRange       = 250,
             isShooting       = false,
-            stompable        = true,
+            stompable        = false,
             stompHeight      = 16,
             healthBarColor   = {0.9, 0.3, 0.9},
             healthBarBgColor = {0.3, 0.08, 0.3},
+            onAttackEnd = nil,
+            noGravity = false,
         },
         dasher = {
             name         = "Dasher",
@@ -110,8 +130,8 @@ function Enemy:new(enemyType, x, y, overrides)
             damage       = 18,
             speed        = 50,
             dashSpeed    = 420,
-            width        = 28,
-            height       = 36,
+            width        = 32,
+            height       = 32,
             color        = {0.2, 0.9, 0.7},
             patrolDist   = 130,
             dashRange    = 180,
@@ -123,6 +143,7 @@ function Enemy:new(enemyType, x, y, overrides)
             dashDirX     = 0,
             stompable    = true,
             stompHeight  = 16,
+            noGravity    = true,
             healthBarColor   = {0.25, 1, 0.8},
             healthBarBgColor = {0.05, 0.3, 0.25},
         },
@@ -177,9 +198,37 @@ function Enemy:new(enemyType, x, y, overrides)
 
     enemy.kbVX = 0
 
+    enemy.vy       = 0
+    enemy.grounded = false
+
     enemy.bobTimer = 0
     enemy.bobOffset = 0
     enemy.bobSquash = 1
+
+    enemy.spriteScale = 1
+    enemy.baseWidth   = enemy.width
+    enemy.baseHeight  = enemy.height
+
+    function enemy:setSpriteScale(scale)
+        scale = scale or 1
+
+        local oldWidth  = enemy.width
+        local oldHeight = enemy.height
+
+        local newWidth  = enemy.baseWidth  * scale
+        local newHeight = enemy.baseHeight * scale
+
+        enemy.x = enemy.x + (oldWidth  - newWidth)  / 2
+        enemy.y = enemy.y + (oldHeight - newHeight)
+
+        enemy.patrolOrigin = enemy.patrolOrigin + (oldWidth - newWidth) / 2
+
+        enemy.width  = newWidth
+        enemy.height = newHeight
+        enemy.spriteScale = scale
+
+        return enemy
+    end
 
     setmetatable(enemy, self)
     table.insert(Enemy.list, enemy)
@@ -235,6 +284,66 @@ function Enemy:_applyKnockback(dt)
     end
 end
 
+function Enemy:_applyGravity(dt)
+    if self.noGravity then
+        self.vy = 0
+        self.grounded = true
+        return
+    end
+
+    self.vy = self.vy + GRAVITY * dt
+    self.y  = self.y + self.vy * dt
+
+    self.grounded = false
+
+    for _, platform in ipairs(Platform.list) do
+        if platform.canCollide then
+            local overlapX = self.x < platform.x + platform.w and self.x + self.width  > platform.x
+            local overlapY = self.y < platform.y + platform.h and self.y + self.height > platform.y
+
+            if overlapX and overlapY then
+                if self.vy > 0 then
+                    self.y = platform.y - self.height
+                    self.vy = 0
+                    self.grounded = true
+                elseif self.vy < 0 then
+                    self.y = platform.y + platform.h
+                    self.vy = 0
+                end
+            end
+        end
+    end
+
+    if self.y > VOID_Y then
+        self:_fallIntoVoid()
+    end
+end
+
+function Enemy:_fallIntoVoid()
+    if self.state == "dead" then return end
+    self:startDeath()
+end
+
+function Enemy:_groundAheadX(dirX)
+    if dirX == 0 then return true end
+
+    local checkX = dirX > 0
+        and (self.x + self.width + LEDGE_CHECK_AHEAD)
+        or  (self.x - LEDGE_CHECK_AHEAD)
+    local checkY = self.y + self.height + LEDGE_CHECK_DEPTH
+
+    for _, platform in ipairs(Platform.list) do
+        if platform.canCollide then
+            if checkX >= platform.x and checkX <= platform.x + platform.w
+            and checkY >= platform.y and checkY <= platform.y + platform.h then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
 function Enemy:update(dt, player)
     self._damagedThisFrame = false 
     
@@ -245,6 +354,7 @@ function Enemy:update(dt, player)
     if self.state == "dead" then return end
 
     self:_applyKnockback(dt)
+    self:_applyGravity(dt)
 
     if self.state == "dying" then
         self:_updateDeath(dt)
@@ -257,38 +367,70 @@ function Enemy:update(dt, player)
     local dy   = player.y - self.y
     local dist = math.sqrt(dx * dx + dy * dy)
 
-    if self.type == "walker" or self.type == "stomper" or self.type == "tank" then
+    if self.type == "walker" or self.type == "stomper" then
         self:_patrol(dt)
+    elseif self.type == "tank" then
+        self.tankCooldownTimer = self.tankCooldownTimer + dt
+
+        if self.tankCharging then
+            -- Executa a carga
+            self.tankChargeTimer = self.tankChargeTimer + dt
+            self.x = self.x + self.tankChargeDir * self.tankChargeSpeed * dt
+            self.flip = self.tankChargeDir < 0
+
+            if self.tankChargeTimer >= self.tankChargeDuration then
+                self.tankCharging = false
+                self.tankChargeTimer = 0
+                self.tankCooldownTimer = 0
+            end
+        else
+            -- Verifica se o jogador está no alcance e o cooldown está pronto
+            if dist <= self.tankAttackRange and self.tankCooldownTimer >= self.tankCooldown then
+                -- Inicia a carga
+                self.tankCharging = true
+                self.tankChargeTimer = 0
+                self.tankChargeDir = (dx ~= 0) and (dx / math.abs(dx)) or 0
+                self.tankCooldownTimer = 0
+            else
+                self:_patrol(dt)
+            end
+        end
     elseif self.type == "shooter" then
         if dist <= self.shootRange then
-            self.isShooting = true
-            self.shootTimer = self.shootTimer + dt
-
-            if self.shootTimer >= self.shootCooldown then
-                self.shootTimer = 0
-                self:_shoot(player)
+            if not self.attacking then
+                self.attacking = true
+                
+                self.onAttackEnd = function(enemy)
+                    enemy:_shoot(player)
+                    enemy.attacking = false
+                end
+                
+                self:_setAnim("attack")
             end
-
-            self:_setAnim("idle")
         else
-            self.isShooting = false
+            self.attacking = false
             self:_patrol(dt)
         end
-
+        
         self:_updateProjectiles(dt, player)
     elseif self.type == "dasher" then
         self.dashTimer = self.dashTimer + dt
 
         if self.dashing then
-            self.dashTimeLeft = self.dashTimeLeft - dt
-            self.x = self.x + self.dashDirX * self.dashSpeed * dt
-            self.flip = self.dashDirX < 0
+            if self.noGravity and not self:_groundAheadX(self.dashDirX) then
+                self.dashing      = false
+                self.dashTimeLeft = 0
+            else
+                self.dashTimeLeft = self.dashTimeLeft - dt
+                self.x = self.x + self.dashDirX * self.dashSpeed * dt
+                self.flip = self.dashDirX < 0
 
-            if self.dashTimeLeft <= 0 then
-                self.dashing = false
+                if self.dashTimeLeft <= 0 then
+                    self.dashing = false
+                end
+
+                self:_setAnim("dash")
             end
-
-            self:_setAnim("dash")
         else
             if dist <= self.dashRange and self.dashTimer >= self.dashCooldown then
                 self.dashTimer    = 0
@@ -304,21 +446,21 @@ function Enemy:update(dt, player)
     self:_updateAnim(dt)
 end
 
-local function drawSpriteWithFlash(sprite, frame, drawX, scaleX, flashing, flashAmt)
+local function drawSpriteWithFlash(sprite, frame, drawX, scaleX, scaleY, flashing, flashAmt)
     love.graphics.setColor(1, 1, 1, 1)
     if frame then
-        love.graphics.draw(sprite, frame, drawX, 0, 0, scaleX, 1)
+        love.graphics.draw(sprite, frame, drawX, 0, 0, scaleX, scaleY)
     else
-        love.graphics.draw(sprite, drawX, 0, 0, scaleX, 1)
+        love.graphics.draw(sprite, drawX, 0, 0, scaleX, scaleY)
     end
 
     if flashing then
         love.graphics.setBlendMode("add")
         love.graphics.setColor(1, 1, 1, flashAmt * 0.85)
         if frame then
-            love.graphics.draw(sprite, frame, drawX, 0, 0, scaleX, 1)
+            love.graphics.draw(sprite, frame, drawX, 0, 0, scaleX, scaleY)
         else
-            love.graphics.draw(sprite, drawX, 0, 0, scaleX, 1)
+            love.graphics.draw(sprite, drawX, 0, 0, scaleX, scaleY)
         end
         love.graphics.setBlendMode("alpha")
         love.graphics.setColor(1, 1, 1, 1)
@@ -328,7 +470,10 @@ end
 function Enemy:_drawBody()
     local flashing = self.hitFlashTimer > 0
     local flashAmt = flashing and (self.hitFlashTimer / self.HIT_FLASH_DURATION) or 0
-    local scaleX = self.flip and -1 or 1
+
+    local scale  = self.spriteScale or 1
+    local scaleX = (self.flip and -1 or 1) * scale
+    local scaleY = scale
     local drawX  = self.flip and self.width or 0
 
     if self.sprite then
@@ -337,7 +482,8 @@ function Enemy:_drawBody()
             local cur = self.anim.animations[self.anim.current]
             frame = cur and cur.frames and cur.frames[self.anim.frame]
         end
-        drawSpriteWithFlash(self.sprite, frame, drawX, scaleX, flashing, flashAmt)
+
+        drawSpriteWithFlash(self.sprite, frame, drawX, scaleX, scaleY, flashing, flashAmt)
     else
         local r, g, b = self.color[1], self.color[2], self.color[3]
         if flashing then
@@ -422,16 +568,21 @@ function Enemy:draw()
     love.graphics.setColor(1, 1, 1, 1)
 
     if self.type == "shooter" then
-        love.graphics.setColor(1, 0.4, 1)
         for _, p in ipairs(self.projectiles) do
-            love.graphics.circle("fill", p.x, p.y, 5)
+            if p.sprite then
+                love.graphics.setColor(1, 1, 1, 1)
+                local imgW = p.sprite:getWidth()
+                local imgH = p.sprite:getHeight()
+                love.graphics.draw(p.sprite, p.x, p.y, p.rotation, 1, 1, imgW / 2, imgH / 2)
+            else
+                love.graphics.setColor(1, 0.4, 1)
+                love.graphics.circle("fill", p.x, p.y, 5)
+                love.graphics.setColor(1, 1, 1, 1)
+            end
         end
-        love.graphics.setColor(1, 1, 1, 1)
     end
 
     self:_drawHealthBar()
-
-    -- Text:new(self.x, self.y - 25, "assets/fonts/PressStart2P-Regular.ttf", 5, self.name, {1, 1, 1}, 1, {0, 0, 0}):draw()
 end
 
 function Enemy.checkStomp(enemy, player)
@@ -502,15 +653,25 @@ end
 function Enemy.updateAll(dt, player)
     for _, e in ipairs(Enemy.list) do
         e:update(dt, player)
-
+ 
         if e:isAlive() and e:isTouching(player) then
-            if Enemy.checkStomp(e, player) then
-                -- Stompable: mata instantaneamente
+            if e.stompable and Enemy.checkStomp(e, player) then
                 e:startDeath()
                 if player.bounceJump then player:bounceJump() end
             else
-                if player.takeDamage then
-                    player:takeDamage(e.damage)
+                if e.type == "tank" and e.tankCharging then
+                    if player.takeDamage then
+                        player:takeDamage(e.damage * 2)
+                        if player.takeKnockback then
+                            local dir = (e.x + e.width/2 < player.x + player.width/2) and 1 or -1
+                            player:takeKnockback(dir * 400)
+                        end
+                    end
+                else
+                    -- Todos os outros dão dano normal
+                    if player.takeDamage then
+                        player:takeDamage(e.damage)
+                    end
                 end
             end
         end
@@ -543,16 +704,24 @@ function Enemy.clear()
 end
 
 function Enemy:_updateBob(dt)
-    if self.state ~= "alive" then
+    if self.state ~= "alive" or (self.anim and self.type ~= "shooter") then
         self.bobOffset = 0
         self.bobSquash = 1
         return
     end
 
-    local freq = (self.speed / 100) * 6 
+    local bobOffsetMultiplier = 2.5
+    local bobFreqMultiplier = 6
+
+    if self.type == "shooter" then
+        bobOffsetMultiplier = 1.25 
+        bobFreqMultiplier = 6
+    end
+
+    local freq = (self.speed / 100) * bobFreqMultiplier 
     self.bobTimer = self.bobTimer + dt * freq
 
-    self.bobOffset = math.sin(self.bobTimer) * 2.5
+    self.bobOffset = math.sin(self.bobTimer) * bobOffsetMultiplier
 
     local sinVal = math.sin(self.bobTimer)
     self.bobSquash = 1 + sinVal * 0.06
@@ -565,6 +734,10 @@ function Enemy:_patrol(dt)
         self.patrolDir = -1
     elseif self.patrolDir == -1 and self.x <= self.patrolOrigin - self.patrolDist then
         self.patrolDir = 1
+    end
+
+    if self.noGravity and not self:_groundAheadX(self.patrolDir) then
+        self.patrolDir = -self.patrolDir
     end
 
     self.x    = self.x + self.patrolDir * self.speed * dt
@@ -594,15 +767,22 @@ function Enemy:_updateAnim(dt)
         a.frame = a.frame + 1
         if a.frame > #cur.frames then
             a.frame = 1
+            
+            if a.current == "attack" and self.onAttackEnd then
+                self.onAttackEnd(self)
+                self.onAttackEnd = nil
+            end
+            
+            if a.current == "attack" then
+                a.current = "walk"
+            end
         end
     end
 end
 
 function Enemy:_shoot(player)
-    if not player.x or not player.y then
-        return
-    end
-    
+    if not player.x or not player.y then return end
+
     local dx   = player.x - self.x
     local dy   = player.y - self.y
     local dist = math.sqrt(dx * dx + dy * dy)
@@ -613,13 +793,22 @@ function Enemy:_shoot(player)
     local projVX = (dx / dist) * self.projectileSpeed
     local projVY = (dy / dist) * self.projectileSpeed
 
+    if not self.bananaImg then
+        self.bananaImg = ENEMIES.shooter.BANANA
+    end
+
     table.insert(self.projectiles, {
-        x    = projX,
-        y    = projY,
-        vx   = projVX,
-        vy   = projVY,
-        life = 3,
+        x        = projX,
+        y        = projY,
+        vx       = projVX,
+        vy       = projVY,
+        life     = 3,
+        rotation = 0,
+        vr       = math.rad(1080),
+        sprite   = self.bananaImg
     })
+
+    self:_setAnim("attack")
 end
 
 function Enemy:_updateProjectiles(dt, player)
@@ -628,6 +817,11 @@ function Enemy:_updateProjectiles(dt, player)
         p.x = p.x + p.vx * dt
         p.y = p.y + p.vy * dt
         p.life = p.life - dt
+        
+        -- Atualiza o ângulo de rotação da banana
+        if p.rotation then
+            p.rotation = p.rotation + p.vr * dt
+        end
 
         local hit = false
 
@@ -644,6 +838,16 @@ function Enemy:_updateProjectiles(dt, player)
 
         if not hit and p.life <= 0 then
             table.remove(self.projectiles, i)
+        end
+    end
+end
+
+function Enemy.changeAllEnemiesHealth(multiplier)
+    for _, e in ipairs(Enemy.list) do
+        if e:isAlive() then
+            local ratio = e.health / e.maxHealth
+            e.maxHealth = e.maxHealth * multiplier
+            e.health    = e.maxHealth * ratio
         end
     end
 end
