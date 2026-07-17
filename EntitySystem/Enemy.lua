@@ -41,13 +41,13 @@ local KNOCKBACK_AOE_RADIUS = 90
 local KNOCKBACK_AOE_SPEED  = 200  
 local KB_FRICTION          = 700
 
-local GRAVITY = 1200  -- mesmo valor usado no Player
-local VOID_Y  = 1500   -- mesmo threshold usado no Player para respawn
+local GRAVITY = 1200 
+local VOID_Y  = 1500
 
-local LEDGE_CHECK_AHEAD = 6  -- quanto olhar à frente da borda
-local LEDGE_CHECK_DEPTH = 6  -- quanto olhar abaixo dos pés
+local LEDGE_CHECK_AHEAD = 6 
+local LEDGE_CHECK_DEPTH = 6
 
-function Enemy:new(enemyType, x, y, overrides)
+function Enemy:new(enemyType, x, y, overrides, onDie)
     local templates = {
         walker = {
             name        = "Walker",
@@ -208,6 +208,7 @@ function Enemy:new(enemyType, x, y, overrides)
     enemy.spriteScale = 1
     enemy.baseWidth   = enemy.width
     enemy.baseHeight  = enemy.height
+    enemy.onDie = onDie or nil
 
     function enemy:setSpriteScale(scale)
         scale = scale or 1
@@ -257,6 +258,10 @@ function Enemy:startDeath()
     if self.state ~= "alive" then return end
 
     love.audio.play(SOUNDS["hit"])
+
+    if self.onDie then
+        self.onDie()
+    end
 
     self.state        = "dying"
     self.deathTimer    = 0

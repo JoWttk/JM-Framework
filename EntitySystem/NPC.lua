@@ -9,6 +9,7 @@ local Dialogue = require("engine.DialogTypes.Dialogue")
 local Input  = require("engine.Input")
 local Player = require("entities.Player")
 local Components = require("engine.EntitySystem.Components")
+local Signal = require("engine.Utils.signal")
 
 function NPC:new(name, x, y, overrides)
     local npc = {
@@ -28,6 +29,8 @@ function NPC:new(name, x, y, overrides)
         interactionDist = NPC.interactionDist,
         _promptShown = false,
     }
+
+    npc.event = Signal:new()
 
     Window.config({
         offsetX = 15,
