@@ -8,6 +8,8 @@ Platform.currentLayer = 1
 Platform._sortedDirty = true
 Platform._sortedList = {}
 
+local OutlineShader = love.graphics.newShader("engine/Shaders/Templates/Outline.glsl")
+
 -- layer 0 = background
 -- layer 1 = gameplay
 -- layer 1+ = foreground / gameplay / ui
@@ -126,6 +128,7 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
     platform.isCircle = false
     platform.radius = 0
     platform.shape = nil
+    platform.onTouch = nil
 
     if texture then
         texture:setFilter("nearest", "nearest")
@@ -189,18 +192,31 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         end
     end
 
-    function platform:tweenTo(x,y,duration,easingName,onComplete)
+    function platform:tweenTo(x, y, duration, easingName, onComplete, looped)
         if platform.usedTween then return end
         if platform.activeTween then
             tween.cancel(platform.activeTween)
         end
 
         local easing = tween.easing[easingName] or tween.easing.linear
+        local startX, startY = platform.x, platform.y
 
-        platform.activeTween = tween.to(platform, { x = x, y = y }, duration, easing, function()
-            platform.activeTween = nil
-            if onComplete then onComplete(platform) end
-        end)
+        local function run(tx, ty)
+            platform.activeTween = tween.to(platform, { x = tx, y = ty }, duration, easing, function()
+                platform.activeTween = nil
+                if onComplete then onComplete(platform) end
+
+                if looped then
+                    if tx == x and ty == y then
+                        run(startX, startY)
+                    else
+                        run(x, y)
+                    end
+                end
+            end)
+        end
+
+        run(x, y)
 
         return platform.activeTween
     end
@@ -254,6 +270,13 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
 
     function platform:getLayer()
         return platform.layer
+    end
+
+    function platform:setStroke(color)
+        self.stroke = true
+        local c = color or {1, 1, 1, 1}
+        self.strokeColor = { c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 }
+        return self
     end
 
     table.insert(Platform.list, platform)
@@ -363,7 +386,18 @@ local function drawSinglePlatform(platform)
                 local texW, texH = platform.texture:getDimensions()
                 local scaleX = platform.w / texW
                 local scaleY = platform.h / texH
+
+                if platform.stroke then
+                    OutlineShader:send("texSize", { texW, texH })
+                    OutlineShader:send("outlineColor", platform.strokeColor)
+                    love.graphics.setShader(OutlineShader)
+                end
+
                 love.graphics.draw(platform.texture, platform.x, platform.y, 0, scaleX, scaleY)
+
+                if platform.stroke then
+                    love.graphics.setShader()
+                end
             end
         else
             local c = platform.color

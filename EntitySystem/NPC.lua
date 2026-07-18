@@ -11,6 +11,8 @@ local Player = require("entities.Player")
 local Components = require("engine.EntitySystem.Components")
 local Signal = require("engine.Utils.signal")
 
+local windowOwnedByNPC = false
+
 function NPC:new(name, x, y, overrides)
     local npc = {
         name     = name or "NPC",
@@ -43,8 +45,9 @@ function NPC:new(name, x, y, overrides)
 
         if not bool then
             npc._promptShown = false
-            if Window.isActive() and not Dialogue.isActive() then
+            if windowOwnedByNPC and Window.isActive() and not Dialogue.isActive() then
                 Window.close()
+                windowOwnedByNPC = false
             end
         end
     end
@@ -100,16 +103,17 @@ end
 
 function NPC:_promptText()
     if CurrentLanguage == "pt" then
-        return "Pressione {SPACE} para interagir"
+        return "Pressione {F} para interagir"
     end
 
-    return "Press {SPACE} to Interact"
+    return "Press {F} to Interact"
 end
 
 function NPC:_showPrompt()
     if self._promptShown then return end
     self._promptShown = true
     Window.show(self:_promptText())
+    windowOwnedByNPC = true
 end
 
 function NPC:_interact()
@@ -118,6 +122,7 @@ function NPC:_interact()
     end
 
     Window.close()
+    windowOwnedByNPC = false
     InteracteWithNpc:fire(self)
     self._promptShown = false
 
@@ -204,7 +209,7 @@ function NPC.updateAll(dt)
             nearNPC:_showPrompt()
         end
 
-        if Input.wasPressed("space") and not Dialogue.isActive() then
+        if Input.wasPressed("f") and not Dialogue.isActive() then
             nearNPC:_interact()
         end
     else
@@ -212,8 +217,9 @@ function NPC.updateAll(dt)
             npc._promptShown = false
         end
 
-        if Window.isActive() and not Dialogue.isActive() then
+        if windowOwnedByNPC and Window.isActive() and not Dialogue.isActive() then
             Window.close()
+            windowOwnedByNPC = false
         end
     end
 end

@@ -2,6 +2,7 @@ local Enemy = {}
 Enemy.__index = Enemy
 
 local Text     = require("engine.Interface.text")
+local Dissolve = require("engine.Shaders.Dissolve")
 local Signal   = require("engine.Utils.signal")
 local Platform = require("engine.EntitySystem.Platform")
 
@@ -271,8 +272,15 @@ end
 function Enemy:_updateDeath(dt)
     self.deathTimer = self.deathTimer + dt
     if self.deathTimer >= self.deathDuration then
-        self.state = "dead"
+        self.state = "dissolving"
+        Dissolve.begin(self)
         Enemy.onDied:fire(self)
+    end
+end
+
+function Enemy:_updateDissolve(dt)
+    if Dissolve.update(self, dt) then
+        self.state = "dead"
     end
 end
 
@@ -366,6 +374,11 @@ function Enemy:update(dt, player)
         return
     end
 
+    if self.state == "dissolving" then
+        self:_updateDissolve(dt)
+        return
+    end
+
     self:_updateBob(dt)
 
     local dx   = player.x - self.x
@@ -378,7 +391,6 @@ function Enemy:update(dt, player)
         self.tankCooldownTimer = self.tankCooldownTimer + dt
 
         if self.tankCharging then
-            -- Executa a carga
             self.tankChargeTimer = self.tankChargeTimer + dt
             self.x = self.x + self.tankChargeDir * self.tankChargeSpeed * dt
             self.flip = self.tankChargeDir < 0
@@ -389,9 +401,7 @@ function Enemy:update(dt, player)
                 self.tankCooldownTimer = 0
             end
         else
-            -- Verifica se o jogador está no alcance e o cooldown está pronto
             if dist <= self.tankAttackRange and self.tankCooldownTimer >= self.tankCooldown then
-                -- Inicia a carga
                 self.tankCharging = true
                 self.tankChargeTimer = 0
                 self.tankChargeDir = (dx ~= 0) and (dx / math.abs(dx)) or 0
@@ -533,6 +543,22 @@ function Enemy:_drawDying()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+function Enemy:_drawDissolving()
+    love.graphics.push()
+    love.graphics.translate(self.x, self.y)
+    love.graphics.setColor(1, 1, 1, 1)
+
+    Dissolve.set(self)
+    love.graphics.setShader(Dissolve.shader)
+    self:_drawBody()
+    love.graphics.setShader()
+
+    love.graphics.pop()
+    love.graphics.setColor(1, 1, 1, 1)
+
+    Dissolve.drawParticles(self)
+end
+
 function Enemy:_drawHealthBar()
     local barX, barY = self.x, self.y - 10
     local barW, barH = self.width, 5
@@ -557,6 +583,11 @@ function Enemy:draw()
 
     if self.state == "dying" then
         self:_drawDying()
+        return
+    end
+
+    if self.state == "dissolving" then
+        self:_drawDissolving()
         return
     end
 
@@ -673,7 +704,6 @@ function Enemy.updateAll(dt, player)
                         end
                     end
                 else
-                    -- Todos os outros dão dano normal
                     if player.takeDamage then
                         player:takeDamage(e.damage)
                     end
@@ -823,7 +853,6 @@ function Enemy:_updateProjectiles(dt, player)
         p.y = p.y + p.vy * dt
         p.life = p.life - dt
         
-        -- Atualiza o ângulo de rotação da banana
         if p.rotation then
             p.rotation = p.rotation + p.vr * dt
         end

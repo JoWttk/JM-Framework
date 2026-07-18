@@ -403,7 +403,7 @@ function MobileControls.injectInput(Input, Scene)
         if SimpleD.isActive() then
             Input.keypressed("return")
         else
-            Input.keypressed("space")
+            Input.keypressed("f")
         end
     end
 

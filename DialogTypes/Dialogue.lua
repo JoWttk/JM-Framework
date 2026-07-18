@@ -353,11 +353,11 @@ function Dialogue.update(dt)
             Dialogue.moveSelection(1)
         end
 
-        if Input.wasPressed("space") or Input.wasPressed("return") then
+        if Input.wasPressed("f") or Input.wasPressed("return") then
             Dialogue.confirmChoice()
         end
     else
-        if Input.wasPressed("space") then
+        if Input.wasPressed("f") then
             Dialogue.advance()
         end
     end

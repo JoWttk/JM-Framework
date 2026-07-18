@@ -166,7 +166,7 @@ function VirtualKeyboard:keypressed(key)
     if key == "left" then self._held.left = true self:_move(-1, 0) return true end
     if key == "right" then self._held.right = true self:_move( 1, 0) return true end
 
-    if key == "return" or key == "space" or key == "z" then
+    if key == "return" or key == "f" or key == "z" then
         self:_applyKey(self:_currentKey())
         return true
     end
