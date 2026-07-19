@@ -1,3 +1,6 @@
+---@class Scene
+---@field current table|nil The currently active scene module
+---@field scenes table<string, table> Registered scene modules
 local Scene = {}
 local current = nil
 local scenes = {}
@@ -6,10 +9,17 @@ local Table = require("engine.Utils.Table")
 
 local activeFade = nil
 
+---Smoothstep interpolation function for fade transitions.
+---@param t number Value between 0 and 1
+---@return number
 local function smoothstep(t)
     return t * t * (3 - 2 * t)
 end
 
+---Create a fade-out effect (screen goes to black).
+---@param TIME number Duration in seconds
+---@param onComplete function|nil Callback when fade completes
+---@return table Fade object with update, draw, and isDone methods
 local function fadeOut(TIME, onComplete)
     local timer = 0
     local done = false
@@ -37,6 +47,10 @@ local function fadeOut(TIME, onComplete)
     }
 end
 
+---Create a fade-in effect (screen fades from black to visible).
+---@param TIME number Duration in seconds
+---@param onComplete function|nil Callback when fade completes
+---@return table Fade object with update, draw, and isDone methods
 local function fadeIn(TIME, onComplete)
     local timer = 0
     local done = false
@@ -65,18 +79,27 @@ local function fadeIn(TIME, onComplete)
     }
 end
 
+---Register a scene module by name.
+---@param name string Scene identifier
+---@param scene table Scene module with load/update/draw functions
 function Scene.register(name, scene)
     scenes[name] = scene
 end
 
+---Get the currently loaded scene module from the global CURRENT_SCENE.
+---@return table
 function Scene.getCurrentModule()
     return require("scenes." .. CURRENT_SCENE)
 end
 
+---Get the currently active scene.
+---@return table|nil
 function Scene.get()
     return current
 end
 
+---Load a scene directly (no transition).
+---@param scene string|table Scene name (registered) or scene module
 function Scene.load(scene)
     if type(scene) == "string" then
         scene = scenes[scene]
@@ -88,10 +111,17 @@ function Scene.load(scene)
     end
 end
 
+---Check if a fade transition is currently active.
+---@return boolean
 function Scene.isTransitioning()
     return activeFade ~= nil
 end
 
+---Perform a fade-out then fade-in transition with a mid-function.
+---@param outTime number Fade-out duration in seconds (default 0.35)
+---@param midFn function|nil Function to execute between fades
+---@param inTime number Fade-in duration in seconds (default 0.35)
+---@param endFn function|nil Function to execute after transition completes
 function Scene.transition(outTime, midFn, inTime, endFn)
     outTime = outTime or 0.35
     inTime  = inTime or 0.35
@@ -106,6 +136,10 @@ function Scene.transition(outTime, midFn, inTime, endFn)
     end)
 end
 
+---Change to a different scene, optionally with a fade transition.
+---@param name string Name of the scene (must be registered)
+---@param doFade boolean|nil Whether to use fade transition
+---@param callback function|nil Function that runs after the scene change
 function Scene.change(name, doFade, callback)
     local scene = scenes[name]
     if not scene then return end
@@ -114,12 +148,6 @@ function Scene.change(name, doFade, callback)
     Player.currentCollision = nil
 
     local nonGame = { Menu = true, Settings = true, UserCreator = true, MapSelector = true }
-    if not nonGame[name] then
-        local Save = require("engine.Save")
-        pcall(function()
-            Save.delete("player.txt")
-        end)
-    end
 
     local function changeNow()
         if callback then callback() end
@@ -149,6 +177,8 @@ function Scene.change(name, doFade, callback)
     end
 end
 
+---Update the current scene and active fade transition.
+---@param dt number Delta time in seconds
 function Scene.update(dt)
     if current and current.update then
         current.update(dt)
@@ -159,6 +189,7 @@ function Scene.update(dt)
     end
 end
 
+---Draw the current scene and active fade overlay.
 function Scene.draw()
     if current and current.draw then
         current.draw()
@@ -169,12 +200,16 @@ function Scene.draw()
     end
 end
 
+---Forward key press event to the current scene.
+---@param key string The key that was pressed
 function Scene.keypressed(key)
     if current and current.keypressed then
         current.keypressed(key)
     end
 end
 
+---Forward key release event to the current scene.
+---@param key string The key that was released
 function Scene.keyreleased(key)
     if current and current.keyreleased then
         current.keyreleased(key)

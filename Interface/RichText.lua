@@ -1,35 +1,53 @@
 local RichText = {}
 
+---Parse text into tokens supporting {icon}, [color=#RRGGBB]text[/color], and plain text.
+---@param text string The input text to parse
+---@return table[] List of tokens with type, value, and optional color fields
 local function parse(text)
     local tokens = {}
     local i = 1
 
     while i <= #text do
+        local colorStart, colorEnd = text:find("%[color=#[%x][%x][%x][%x][%x][%x]%]", i)
+        if colorStart and colorStart == i then
+            local colorHex = text:sub(colorStart + 7, colorEnd - 1)
+            local closeTag = text:find("%[/color%]", colorEnd + 1)
+            if closeTag then
+                local content = text:sub(colorEnd + 1, closeTag - 1)
+                table.insert(tokens, {
+                    type = "colored",
+                    value = content,
+                    color = colorHex
+                })
+                i = closeTag + 8
+                goto continue
+            end
+        end
+
         local startPos, endPos = text:find("{.-}", i)
 
-        if startPos then
-            if startPos > i then
-                table.insert(tokens, {
-                    type = "text",
-                    value = text:sub(i, startPos - 1)
-                })
-            end
-
+        if startPos and startPos == i then
             local iconName = text:sub(startPos + 1, endPos - 1)
-
             table.insert(tokens, {
                 type = "icon",
                 value = iconName
             })
-
             i = endPos + 1
         else
+            local nextSpecial = #text + 1
+            local nextColor = text:find("%[color=#[%x][%x][%x][%x][%x][%x]%]", i)
+            local nextIcon = text:find("{", i)
+            if nextColor then nextSpecial = math.min(nextSpecial, nextColor) end
+            if nextIcon then nextSpecial = math.min(nextSpecial, nextIcon) end
+
             table.insert(tokens, {
                 type = "text",
-                value = text:sub(i)
+                value = text:sub(i, nextSpecial - 1)
             })
-            break
+            i = nextSpecial
         end
+
+        ::continue::
     end
 
     return tokens
@@ -69,6 +87,17 @@ local function splitWords(text)
     return parts
 end
 
+---Convert hex color string (#RRGGBB) to RGB values (0-1).
+---@param hex string Hex color like "FF0000" or "#FF0000"
+---@return number r, number g, number b
+local function hexToRGB(hex)
+    hex = hex:gsub("#", "")
+    local r = tonumber(hex:sub(1, 2), 16) / 255
+    local g = tonumber(hex:sub(3, 4), 16) / 255
+    local b = tonumber(hex:sub(5, 6), 16) / 255
+    return r, g, b
+end
+
 local function getIconImage(name)
     if name == "SPACE" then
         return KEY_ICONS_EXTRA
@@ -77,17 +106,69 @@ local function getIconImage(name)
     return KEY_ICONS
 end
 
-function RichText.draw(text, x, y, scale, iconScale)
+---Calculate the total width of a parsed text string (excluding color markup).
+---@param text string The text to measure
+---@param scale number Font scale
+---@param iconScale number Icon scale
+---@return number width
+function RichText.measure(text, scale, iconScale)
+    scale = scale or 1
+    iconScale = iconScale or scale
+    local font = love.graphics.getFont()
+    local tokens = parse(text)
+    local w = 0
+
+    for _, token in ipairs(tokens) do
+        if token.type == "text" or token.type == "colored" then
+            w = w + font:getWidth(token.value) * scale
+        elseif token.type == "icon" then
+            local quad = ICONS[token.value]
+            if quad then
+                local _, _, iconW = quad:getViewport()
+                w = w + iconW * iconScale + 2
+            else
+                w = w + font:getWidth("{" .. token.value .. "}") * scale
+            end
+        end
+    end
+
+    return w
+end
+
+---Draw rich text at the given position.
+---@param text string Text with optional {icon} and [color=#RRGGBB]text[/color] tags
+---@param x number X position (left edge, or center if halign="center")
+---@param y number Y position
+---@param scale number|nil Font scale (default 1)
+---@param iconScale number|nil Icon scale (default = scale)
+---@param halign string|nil Horizontal alignment: "left" (default), "center", "right"
+function RichText.draw(text, x, y, scale, iconScale, halign)
+    x = x or 0
+    y = y or 0
     scale = scale or 1
     iconScale = iconScale or scale
 
     local font = love.graphics.getFont()
     local tokens = parse(text)
+
+    if halign == "center" then
+        x = x - RichText.measure(text, scale, iconScale) / 2
+    elseif halign == "right" then
+        x = x - RichText.measure(text, scale, iconScale)
+    end
+
     local posX = x
 
     for _, token in ipairs(tokens) do
         if token.type == "text" then
             love.graphics.print(token.value, posX, y, 0, scale, scale)
+            posX = posX + font:getWidth(token.value) * scale
+
+        elseif token.type == "colored" then
+            local r, g, b = hexToRGB(token.color)
+            love.graphics.setColor(r, g, b)
+            love.graphics.print(token.value, posX, y, 0, scale, scale)
+            love.graphics.setColor(1, 1, 1)
             posX = posX + font:getWidth(token.value) * scale
 
         elseif token.type == "icon" then
@@ -121,6 +202,12 @@ function RichText.drawWrapped(text, x, y, maxWidth, lineHeight, scale, iconScale
             if token.type == "text" then
                 love.graphics.print(token.value, posX, currentY, 0, scale, scale)
                 posX = posX + token.width
+            elseif token.type == "colored" then
+                local r, g, b = hexToRGB(token.color)
+                love.graphics.setColor(r, g, b)
+                love.graphics.print(token.value, posX, currentY, 0, scale, scale)
+                love.graphics.setColor(1, 1, 1)
+                posX = posX + font:getWidth(token.value) * scale
             else
                 local quad = ICONS[token.value]
                 if quad then
@@ -156,6 +243,15 @@ function RichText.drawWrapped(text, x, y, maxWidth, lineHeight, scale, iconScale
                     table.insert(currentLine, {type = "text", value = segment, width = width})
                     posX = posX + width
                 end
+            elseif token.type == "colored" then
+                local width = font:getWidth(token.value) * scale
+                if posX + width > x + maxWidth and #currentLine > 0 then
+                    table.insert(wrapped, currentLine)
+                    currentLine = {}
+                    posX = x
+                end
+                table.insert(currentLine, token)
+                posX = posX + width
             else
                 local quad = ICONS[token.value]
                 local iconWidth
@@ -238,6 +334,13 @@ function RichText.measureWrapped(text, x, maxWidth, scale, iconScale)
                     table.insert(currentLine, true)
                     posX = posX + width
                 end
+            elseif token.type == "colored" then
+                local width = font:getWidth(token.value) * scale
+                if posX + width > x + maxWidth and #currentLine > 0 then
+                    commitLine()
+                end
+                table.insert(currentLine, true)
+                posX = posX + width
             else
                 local quad = ICONS[token.value]
                 local iconWidth

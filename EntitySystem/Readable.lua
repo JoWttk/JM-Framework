@@ -1,3 +1,15 @@
+---@class Readable
+---@field x number X position on screen
+---@field y number Y position on screen
+---@field alpha number Current opacity (0-1)
+---@field img love.Image The image to display
+---@field font love.Font Font used for text rendering
+---@field text string Text content to display
+---@field scale number Display scale multiplier
+---@field onClose function|nil Callback when the readable is closed
+---@field displayW number Calculated display width
+---@field displayH number Calculated display height
+---@field activeTween table|nil Current animation tween
 local Readable = {}
 Readable.list = {}
 Readable.current = nil
@@ -6,12 +18,22 @@ Readable.__index = Readable
 local Input = require("engine.Input")
 local tweenLib = require("engine.Utils.tween")
 
-function Readable:new(x, y, image, font, text, scale)
+---Create a new readable object
+---@param x number X position
+---@param y number Y position
+---@param image love.Image Image to display
+---@param font love.Font Font for text
+---@param text string Text content
+---@param scale number Display scale
+---@param onclose function|nil Callback on close
+---@return Readable
+function Readable:new(x, y, image, font, text, scale, onclose)
     local read = {}
     read.img = image
     read.font = font
     read.text = text
     read.scale = scale or 1
+    read.onClose = onclose or nil
 
     local scaleX = read.scale + 3
     local scaleY = read.scale
@@ -88,14 +110,20 @@ function Readable:new(x, y, image, font, text, scale)
     return read
 end
 
-function Readable:update(dt)
-    if Input.wasMousePressed(1) then
-        print("k")
+---Update readable state
+function Readable:update()
+    if Readable.current ~= nil and Input.wasMousePressed(1) then
         Readable:destroy(Readable.current)
+        
+        if Readable.current.onClose then
+            Readable.current.onClose()
+        end
+
         Readable.current = nil
     end
 end
 
+---Draw all readable objects
 function Readable:draw()
     for _, v in ipairs(Readable.list) do
         if v.draw then
@@ -104,6 +132,8 @@ function Readable:draw()
     end
 end
 
+---Destroy a readable object
+---@param read Readable The readable to destroy
 function Readable:destroy(read)
     for i, v in ipairs(Readable.list) do
         if v == read then
@@ -116,6 +146,7 @@ function Readable:destroy(read)
     end
 end
 
+---Clear all readable objects
 function Readable.clear()
     for _, v in ipairs(Readable.list) do
         if v.activeTween then

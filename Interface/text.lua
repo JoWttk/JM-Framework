@@ -2,7 +2,15 @@ local UI = require("engine.Interface.UI")
 
 local InterfaceText = {}
 
-function InterfaceText:new(x, y, font, fontSize, text, textColor, textStroke, textStrokeColor)
+---@param x number
+---@param y number
+---@param font string
+---@param fontSize number
+---@param textColor table
+---@param textStroke number
+---@param textStrokeColor table | nil
+---@param transparency number
+function InterfaceText:new(x, y, font, fontSize, text, textColor, textStroke, textStrokeColor, transparency)
     local textObj = {}
     textObj.x = x
     textObj.y = y
@@ -12,6 +20,7 @@ function InterfaceText:new(x, y, font, fontSize, text, textColor, textStroke, te
     textObj.textStrokeColor = textStrokeColor or {0, 0, 0}
     textObj.fontPath = font
     textObj.fontSize = fontSize or 16
+    textObj.transparency = transparency or 1
     
     function textObj:draw()
         local font = UI.getFont(self.fontPath, self.fontSize)
@@ -30,8 +39,13 @@ function InterfaceText:new(x, y, font, fontSize, text, textColor, textStroke, te
                 love.graphics.print(self.text, self.x + dx, self.y + dy)
             end
         end
+        
+        local r = self.textColor[1]
+        local g = self.textColor[2]
+        local b = self.textColor[3]
+        local a = self.transparency
 
-        love.graphics.setColor(self.textColor)
+        love.graphics.setColor(r, g, b, a)
         love.graphics.print(self.text, self.x, self.y)
     end
 

@@ -1,3 +1,8 @@
+---@class AutoSave
+---@field dirty boolean Whether there are pending changes to save
+---@field timer number Elapsed time since last save
+---@field interval number Auto-save interval in seconds
+---@field pending table Pending data to be saved
 local AutoSave = {
     dirty = false,
     timer = 0,
@@ -7,6 +12,8 @@ local AutoSave = {
 
 local Save = require("engine.Save")
 
+---Mark the auto-save system as dirty, scheduling a save.
+---@param payload table|nil Optional data to include in the next save
 function AutoSave.markDirty(payload)
     AutoSave.dirty = true
     AutoSave.timer = 0
@@ -17,6 +24,8 @@ function AutoSave.markDirty(payload)
     end
 end
 
+---Immediately save all pending data (player, progress, settings).
+---Attempts Poki web save first, falls back to local file save.
 function AutoSave.saveNow()
     if AutoSave.pending.player then
         local ok, Poki = pcall(require, "engine.Web.Poki")
@@ -53,6 +62,8 @@ function AutoSave.saveNow()
     AutoSave.timer = 0
 end
 
+---Update the auto-save timer. Saves automatically when interval is reached.
+---@param dt number Delta time in seconds
 function AutoSave.update(dt)
     if not AutoSave.dirty then return end
     AutoSave.timer = AutoSave.timer + dt
@@ -61,6 +72,8 @@ function AutoSave.update(dt)
     end
 end
 
+---Set the auto-save interval.
+---@param sec number Interval in seconds
 function AutoSave.setInterval(sec)
     AutoSave.interval = sec or AutoSave.interval
 end

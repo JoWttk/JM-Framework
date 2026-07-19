@@ -1,5 +1,33 @@
 local tween = require "engine.Utils.tween"
 local Camera = require "engine.EntitySystem.Camera"
+
+---@class Platform
+---@field x number Position X of the platform
+---@field y number Position Y of the platform
+---@field w number Width of the platform
+---@field h number Height of the platform
+---@field color table Color of the platform (RGB)
+---@field texture love.Image|nil Texture of the platform
+---@field tag string Identification tag
+---@field canCollide boolean Whether collision is enabled
+---@field alpha number Opacity (0-1)
+---@field visible boolean Whether the platform is visible
+---@field breakable boolean Whether the platform is destructible
+---@field breakSide "all" | "top" | "bottom" | "both" | nil Break direction side
+---@field onBreak function Callback executed on break
+---@field tileTexture boolean Whether texture repeats in tile pattern
+---@field layer number Rendering layer
+---@field pushable boolean Whether the platform can be pushed
+---@field broken boolean Whether the platform is already broken
+---@field rotation number Current rotation angle
+---@field cornerRadiusX number X radius for rounded corners
+---@field cornerRadiusY number Y radius for rounded corners
+---@field isCircle boolean Whether the platform is a circle
+---@field radius number Radius when shape is a circle
+---@field shape table|nil Polygon point list
+---@field onTouch function|nil Touch event callback
+---@field setRotation function
+---@field setPolygon function
 local Platform = {}
 
 Platform.list = {}
@@ -9,10 +37,6 @@ Platform._sortedDirty = true
 Platform._sortedList = {}
 
 local OutlineShader = love.graphics.newShader("engine/Shaders/Templates/Outline.glsl")
-
--- layer 0 = background
--- layer 1 = gameplay
--- layer 1+ = foreground / gameplay / ui
 
 function Platform.setLayer(layer)
     Platform.currentLayer = layer or 1
@@ -100,6 +124,23 @@ local function ensureCache(platform)
     end
 end
 
+---@param x number X position of the platform
+---@param y number Y position of the platform
+---@param w number Width of the platform
+---@param h number Height of the platform
+---@param color table | nil Color of the platform
+---@param texture love.Image | nil (Optional) Texture of the platform
+---@param tag string | nil
+---@param canCollide boolean
+---@param alpha number Transparency of the platform
+---@param visible boolean
+---@param breakable boolean
+---@param breakSide "all" | "top" | "bottom" | "both" | nil
+---@param onBreak function | nil
+---@param tileTexture boolean If texture is larger than image, it scales or repeat
+---@param layer number
+---@param pushable boolean
+---@return Platform
 function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visible, breakable, breakSide, onBreak, tileTexture, layer, pushable)
     local Player = require("entities.Player")
     local platform = {
@@ -133,23 +174,8 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
     if texture then
         texture:setFilter("nearest", "nearest")
     end
-
-    --[[
-    CanCollide = false/true,
-    alpha 0 = invisible, 1 = fully visible,
-    visible = true/false,
-    breakSide = "bottom" | "top" | "both" | "all"
-      - "bottom" = quebra ao tocar de baixo
-      - "top" = quebra ao tocar de cima
-      - "both" = quebra ao tocar de cima ou de baixo
-      - "all" = quebra em qualquer direção (top, bottom, left, right)
-    tileTexture = true  -> repete a textura (chao, parede, etc)
-                = false -> escala a textura inteira pro tamanho do platform (sprite unico, ex: arvore)
-    rotation = radianos, rotaciona em torno do centro do platform (apenas visual, não afeta a colisão AABB)
-    pushable = true/false, se a plataforma pode ser empurrada pelo player
-    cornerRadiusX/Y = arredondamento visual dos cantos (apenas visual, não afeta a colisão AABB)
-    ]]
-
+    
+    ---@param ang number platform rotation angle
     function platform:setRotation(ang)
         self.rotation = ang or 0
         return self
@@ -159,6 +185,7 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         return self.rotation
     end
 
+    ---@param num number
     function platform:setRadius(num)
         if not color and not texture then
             color = { 0,0,0 }
@@ -168,12 +195,15 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         platform.radius = num
     end
 
+    ---@param rx number X corner radius
+    ---@param ry number Y corner radius
     function platform:setCornerRadius(rx, ry)
         self.cornerRadiusX = rx or 0
         self.cornerRadiusY = ry or self.cornerRadiusX
         return self
     end
 
+    ---@param bool boolean active/deative polygon
     function platform:setPolygon(bool)
         if bool then
             platform.isCircle = false
@@ -185,6 +215,7 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         end
     end
 
+    ---@param bool boolean active/deactive if platform is moveable
     function platform:setMoveable(bool)
         self.pushable = (bool == nil) and true or bool
         if self.pushable then
@@ -192,6 +223,12 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         end
     end
 
+    ---@param x number desired X pos
+    ---@param y number desired Y pos
+    ---@param duration number duration of the tween
+    ---@param easingName string "linear" | "quadIn" | "quadOut" | "quadInOut" | "cubicIn" | "cubicOut" | "cubicInOut" | "backOut" | "elasticOut"
+    ---@param onComplete function function that will run after tween is compelte
+    ---@param looped boolean if loop will runs in loop
     function platform:tweenTo(x, y, duration, easingName, onComplete, looped)
         if platform.usedTween then return end
         if platform.activeTween then
@@ -221,6 +258,11 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         return platform.activeTween
     end
 
+    ---@param w number desired width
+    ---@param h number desired height
+    ---@param dur number duration of the tween
+    ---@param easingName "linear" | "quadIn" | "quadOut" | "quadInOut" | "cubicIn" | "cubicOut" | "cubicInOut" | "backOut" | "elasticOut"
+    ---@param looped boolean if loop will runs in loop
     function platform:tweenSize(w, h, dur, easingName, looped)
         if platform.activeSizeTween then
             tween.cancel(platform.activeSizeTween)
@@ -243,12 +285,18 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         return platform.activeSizeTween
     end
 
+    ---@param px number
+    ---@param py number
     function platform:setPivot(px, py)
         self.pivotX = px
         self.pivotY = py
         return self
     end
 
+    ---@param targetRotation number Desired rotation of the tween
+    ---@param duration number Duration of the tween
+    ---@param easingName "linear" | "quadIn" | "quadOut" | "quadInOut" | "cubicIn" | "cubicOut" | "cubicInOut" | "backOut" | "elasticOut"
+    ---@param onComplete function function that will runs after the tween
     function platform:tweenRotation(targetRotation, duration, easingName, onComplete)
         if platform.activeRotationTween then
             tween.cancel(platform.activeRotationTween)
@@ -264,6 +312,7 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         return platform.activeRotationTween
     end
     
+    ---@param n number Platform layer
     function platform:setLayer(n)
         platform.layer = n
     end
@@ -272,6 +321,7 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         return platform.layer
     end
 
+    ---@param color table Platform stroke color
     function platform:setStroke(color)
         self.stroke = true
         local c = color or {1, 1, 1, 1}
@@ -284,6 +334,8 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
     return platform
 end
 
+--- @param platform Platform
+---@param newTexturePath string
 function Platform.changeTexture(platform, newTexturePath)
     local newTexture = love.graphics.newImage(newTexturePath)
     newTexture:setFilter("nearest", "nearest")
@@ -413,15 +465,6 @@ local function drawSinglePlatform(platform)
         end
 
         love.graphics.setColor(1, 1, 1, 1)
-        if Platform.debug then
-            love.graphics.setColor(0, 1, 0, 0.4)
-            if hasCorner then
-                love.graphics.rectangle("line", platform.x, platform.y, platform.w, platform.h, platform.cornerRadiusX, platform.cornerRadiusY)
-            else
-                love.graphics.rectangle("line", platform.x, platform.y, platform.w, platform.h)
-            end
-            love.graphics.setColor(1, 1, 1, 1)
-        end
     end
 
     if rotated then
@@ -481,6 +524,7 @@ function Platform.drawPlatform(target)
     drawSinglePlatform(platform)
 end
 
+---@param target number | "Platform"
 function Platform.destroy(target)
     if type(target) == "number" then
         local platform = Platform.list[target]
@@ -491,7 +535,6 @@ function Platform.destroy(target)
                 platform.broken = true
                 platform.onBreak(platform) 
             end
-            -- table.remove(Platform.list, target)
         end
         return
     end
@@ -504,12 +547,12 @@ function Platform.destroy(target)
                 platform.broken = true
                 platform.onBreak(platform) 
             end
-            -- table.remove(Platform.list, i)
             return
         end
     end
 end
 
+---@param tag Platform | string
 function Platform.getPlatformByTag(tag)
     if type(tag) ~= "string" then
         return
@@ -522,6 +565,21 @@ function Platform.getPlatformByTag(tag)
     end
 
     return nil
+end
+
+---Returns the bounding box (minX, minY, maxX, maxY) of all platforms
+function Platform.getBounds()
+    local minX, minY = math.huge, math.huge
+    local maxX, maxY = -math.huge, -math.huge
+
+    for _, p in ipairs(Platform.list) do
+        minX = math.min(minX, p.x)
+        minY = math.min(minY, p.y)
+        maxX = math.max(maxX, p.x + p.w)
+        maxY = math.max(maxY, p.y + p.h)
+    end
+
+    return minX, minY, maxX, maxY
 end
 
 function Platform.clear()

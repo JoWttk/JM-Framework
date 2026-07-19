@@ -1,7 +1,9 @@
 local Components = require("engine.EntitySystem.Components")
 
+---@class Systems
 local Systems = {}
 
+---Update all entity positions and animations
 function Systems.update(dt)
     for e, pos in pairs(Components.Position) do
         local vel = Components.Velocity[e]
@@ -29,6 +31,7 @@ function Systems.update(dt)
     end
 end
 
+---Draw all entity sprites with their animations
 function Systems.draw()
     for e, sprite in pairs(Components.Sprite) do
         local pos = Components.Position[e]

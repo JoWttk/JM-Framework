@@ -1,3 +1,12 @@
+---@class NPC
+---@field x number X position
+---@field y number Y position
+---@field width number Collision width
+---@field height number Collision height
+---@field interactable boolean Whether NPC can be interacted with
+---@field dialogues table List of dialogue sequences
+---@field onInteract function Callback when NPC is interacted with
+---@field anim table Animation data { animations, current, frame, timer }
 local NPC = {}
 NPC.__index = NPC
 
@@ -13,6 +22,12 @@ local Signal = require("engine.Utils.signal")
 
 local windowOwnedByNPC = false
 
+---Create a new NPC
+---@param name string Name of the NPC
+---@param x number X position
+---@param y number Y position
+---@param overrides table NPC configuration overrides
+---@return NPC
 function NPC:new(name, x, y, overrides)
     local npc = {
         name     = name or "NPC",
@@ -40,6 +55,8 @@ function NPC:new(name, x, y, overrides)
         maxWidth = 300
     })
 
+    ---Set whether NPC is interactable
+    ---@param bool boolean
     function npc:setInteractable(bool)
         npc.interactable = bool
 
@@ -80,6 +97,8 @@ function NPC:new(name, x, y, overrides)
     return npc
 end
 
+---Check if the player is nearby for interaction
+---@return boolean
 function NPC:isPlayerNearby()
     local entity = Player.getEntity()
     if not entity then return false end
@@ -101,6 +120,8 @@ function NPC:isPlayerNearby()
     return dist <= self.interactionDist
 end
 
+---Get the interaction prompt text
+---@return string
 function NPC:_promptText()
     if CurrentLanguage == "pt" then
         return "Pressione {F} para interagir"
@@ -109,6 +130,7 @@ function NPC:_promptText()
     return "Press {F} to Interact"
 end
 
+---Show the interaction prompt
 function NPC:_showPrompt()
     if self._promptShown then return end
     self._promptShown = true
@@ -116,6 +138,7 @@ function NPC:_showPrompt()
     windowOwnedByNPC = true
 end
 
+---Handle NPC interaction
 function NPC:_interact()
     if not self.interactable then
         return
@@ -142,6 +165,7 @@ function NPC:_interact()
     end
 end
 
+---Update NPC animation
 function NPC:update(dt)
     if self.anim then
         local a   = self.anim
@@ -159,6 +183,7 @@ function NPC:update(dt)
     end
 end
 
+---Draw the NPC
 function NPC:draw()
     love.graphics.setColor(1, 1, 1)
     love.graphics.push()
@@ -192,6 +217,7 @@ function NPC:draw()
     love.graphics.setColor(1, 1, 1)
 end
 
+---Update all NPCs and handle interactions
 function NPC.updateAll(dt)
     local nearAny = false
     local nearNPC = nil
@@ -224,16 +250,20 @@ function NPC.updateAll(dt)
     end
 end
 
+---Draw all NPCs
 function NPC.drawAll()
     for _, npc in ipairs(NPC.list) do
         npc:draw()
     end
 end
 
+---Clear all NPCs
 function NPC.clear()
     NPC.list = {}
 end
 
+---Remove a specific NPC from the list
+---@param npc NPC The NPC to remove
 function NPC.remove(npc)
     for i, n in ipairs(NPC.list) do
         if n == npc then

@@ -1,3 +1,73 @@
+---@class Enemy
+---@field type "walker"|"stomper"|"tank"|"shooter"|"dasher" Enemy type identifier
+---@field name string Display name of the enemy
+---@field x number X position
+---@field y number Y position
+---@field width number Collision width
+---@field height number Collision height
+---@field health number Current health points
+---@field maxHealth number Maximum health points
+---@field damage number Damage dealt to player
+---@field speed number Movement speed
+---@field color table Fallback color when no sprite
+---@field patrolDist number Maximum patrol distance from origin
+---@field patrolOrigin number Origin X for patrol movement
+---@field patrolDir number Current patrol direction (-1 or 1)
+---@field flip boolean Whether sprite is flipped horizontally
+---@field stompable boolean Whether enemy can be killed by stomping
+---@field stompHeight number Height threshold for stomp detection
+---@field healthBarColor table RGB color for health bar fill
+---@field healthBarBgColor table RGB color for health bar background
+---@field noGravity boolean Whether enemy ignores gravity
+---@field knockbackResist boolean|nil Whether enemy resists knockback
+---@field sprite love.Image|nil Enemy sprite image
+---@field anim table|nil Animation data { animations, current, frame, timer }
+---@field state "alive"|"dying"|"dissolving"|"dead" Current enemy state
+---@field deathMode any Death animation mode
+---@field deathTimer number Timer for death animation
+---@field deathDuration number Duration of death animation
+---@field deathVX number X velocity during death
+---@field deathVY number Y velocity during death
+---@field deathRotation number Rotation during death
+---@field hitFlashTimer number Timer for hit flash effect
+---@field HIT_FLASH_DURATION number Duration of hit flash
+---@field kbVX number Knockback X velocity
+---@field vy number Vertical velocity (gravity)
+---@field grounded boolean Whether enemy is on ground
+---@field bobTimer number Timer for idle bobbing animation
+---@field bobOffset number Current bob offset
+---@field bobSquash number Current squash scale
+---@field spriteScale number Scale multiplier for sprite
+---@field baseWidth number Original width before scaling
+---@field baseHeight number Original height before scaling
+---@field onDie function|nil Callback when enemy dies
+---@field projectiles table List of active projectiles
+---@field _damagedThisFrame boolean|nil Prevents double damage in same frame
+---@field tankAttackRange number|nil Range for tank charge attack
+---@field tankChargeSpeed number|nil Speed during tank charge
+---@field tankChargeDuration number|nil Duration of tank charge
+---@field tankChargeTimer number|nil Timer for tank charge
+---@field tankCharging boolean|nil Whether tank is currently charging
+---@field tankChargeDir number|nil Direction of tank charge
+---@field tankCooldown number|nil Cooldown between tank charges
+---@field tankCooldownTimer number|nil Timer for tank cooldown
+---@field shootCooldown number|nil Cooldown between shots
+---@field shootTimer number|nil Timer for shoot cooldown
+---@field projectileDamage number|nil Damage dealt by projectiles
+---@field projectileSpeed number|nil Speed of projectiles
+---@field shootRange number|nil Maximum range for shooting
+---@field isShooting boolean|nil Whether enemy is currently shooting
+---@field attacking boolean|nil Whether enemy is in attack state
+---@field onAttackEnd function|nil Callback when attack animation ends
+---@field dashSpeed number|nil Speed during dash
+---@field dashRange number|nil Maximum range for dash detection
+---@field dashCooldown number|nil Cooldown between dashes
+---@field dashTimer number|nil Timer for dash cooldown
+---@field dashing boolean|nil Whether enemy is currently dashing
+---@field dashDuration number|nil Duration of dash
+---@field dashTimeLeft number|nil Remaining dash time
+---@field dashDirX number|nil Direction of dash
+---@field setSpriteScale number
 local Enemy = {}
 Enemy.__index = Enemy
 
@@ -9,50 +79,29 @@ local Platform = require("engine.EntitySystem.Platform")
 Enemy.list   = {}
 Enemy.onDied = Signal.new()
 
--- ============================================================
--- TIPOS DISPONÍVEIS:
---   "walker"   - patrulha básica, dano leve
---   "stomper"  - patrulha, morre se player pular em cima (Mario)
---   "tank"     - patrulha lenta, muito HP, dano pesado (NÃO é stompable)
---   "shooter"  - patrulha, para e atira quando player entra no range
---   "dasher"   - patrulha, faz dash quando player se aproxima
---
--- Todos os tipos (exceto o tank) são stompable (morrem instantaneamente se o player pular em cima).
---
--- SPAWN:
---   Enemy:new("walker", x, y)
---   Enemy:new("walker", x, y, { patrolDist = 200 })
---   Enemy:new("walker", x, y, { sprite = love.graphics.newImage(...) })
---   Enemy:new("walker", x, y, {
---       sprite = img,
---       animations = {
---           walk = { frames = { q1, q2 }, speed = 0.15 },
---           idle = { frames = { q0 },    speed = 0.4  },
---       }
---   })
---
--- SIGNAL:
---   Enemy.onDied:connect(function(enemy)
---       print("morreu:", enemy.name, "em", enemy.x, enemy.y)
---   end)
--- AI
-
-local KNOCKBACK_HIT_SPEED  = 260  
-local KNOCKBACK_AOE_RADIUS = 90  
-local KNOCKBACK_AOE_SPEED  = 200  
+local KNOCKBACK_HIT_SPEED  = 260
+local KNOCKBACK_AOE_RADIUS = 90
+local KNOCKBACK_AOE_SPEED  = 200
 local KB_FRICTION          = 700
 
-local GRAVITY = 1200 
+local GRAVITY = 1200
 local VOID_Y  = 1500
 
-local LEDGE_CHECK_AHEAD = 6 
+local LEDGE_CHECK_AHEAD = 6
 local LEDGE_CHECK_DEPTH = 6
 
+---Create a new enemy
+---@param enemyType string Enemy type: "walker", "stomper", "tank", "shooter", "dasher"
+---@param x number X spawn position
+---@param y number Y spawn position
+---@param overrides table|nil Configuration overrides
+---@param onDie function|nil Death callback
+---@return Enemy
 function Enemy:new(enemyType, x, y, overrides, onDie)
     local templates = {
         walker = {
             name        = "Walker",
-            health      = 20,  -- 2 ataques para matar
+            health      = 20,
             damage      = 10,
             speed       = 70,
             width       = 32,
@@ -67,7 +116,7 @@ function Enemy:new(enemyType, x, y, overrides, onDie)
         },
         stomper = {
             name        = "Stomper",
-            health      = 20,  -- 2 ataques para matar
+            health      = 20,
             damage      = 20,
             speed       = 80,
             width       = 32,
@@ -82,7 +131,7 @@ function Enemy:new(enemyType, x, y, overrides, onDie)
         },
         tank = {
             name        = "Tank",
-            health      = 50,  -- 5 ataques para matar
+            health      = 50,
             damage      = 25,
             speed       = 28,
             width       = 48,
@@ -105,7 +154,7 @@ function Enemy:new(enemyType, x, y, overrides, onDie)
         },
         shooter = {
             name             = "Shooter",
-            health           = 30,  -- 3 ataques para matar
+            health           = 30,
             damage           = 8,
             speed            = 45,
             width            = 32,
@@ -127,7 +176,7 @@ function Enemy:new(enemyType, x, y, overrides, onDie)
         },
         dasher = {
             name         = "Dasher",
-            health       = 40,  -- 4 ataques para matar
+            health       = 40,
             damage       = 18,
             speed        = 50,
             dashSpeed    = 420,
@@ -211,6 +260,8 @@ function Enemy:new(enemyType, x, y, overrides, onDie)
     enemy.baseHeight  = enemy.height
     enemy.onDie = onDie or nil
 
+    ---Set sprite scale and adjust position
+    ---@param scale number Scale multiplier
     function enemy:setSpriteScale(scale)
         scale = scale or 1
 
@@ -237,6 +288,8 @@ function Enemy:new(enemyType, x, y, overrides, onDie)
     return enemy
 end
 
+---Apply damage to the enemy
+---@param amount number Damage amount
 function Enemy:takeDamage(amount)
     if not self:isAlive() then return end
     if self._damagedThisFrame then return end 
@@ -251,10 +304,13 @@ function Enemy:takeDamage(amount)
     end
 end
 
+---Check if enemy is alive
+---@return boolean
 function Enemy:isAlive()
     return self.state == "alive"
 end
 
+---Start death sequence
 function Enemy:startDeath()
     if self.state ~= "alive" then return end
 
@@ -269,6 +325,7 @@ function Enemy:startDeath()
     self.deathDuration = 0.15
 end
 
+---Update death animation
 function Enemy:_updateDeath(dt)
     self.deathTimer = self.deathTimer + dt
     if self.deathTimer >= self.deathDuration then
@@ -278,12 +335,14 @@ function Enemy:_updateDeath(dt)
     end
 end
 
+---Update dissolve effect
 function Enemy:_updateDissolve(dt)
     if Dissolve.update(self, dt) then
         self.state = "dead"
     end
 end
 
+---Apply knockback velocity
 function Enemy:_applyKnockback(dt)
     if self.kbVX == 0 then return end
 
@@ -297,6 +356,7 @@ function Enemy:_applyKnockback(dt)
     end
 end
 
+---Apply gravity and platform collision
 function Enemy:_applyGravity(dt)
     if self.noGravity then
         self.vy = 0
@@ -332,11 +392,15 @@ function Enemy:_applyGravity(dt)
     end
 end
 
+---Handle falling into the void
 function Enemy:_fallIntoVoid()
     if self.state == "dead" then return end
     self:startDeath()
 end
 
+---Check if there is ground ahead in given direction
+---@param dirX number Direction to check (-1, 0, or 1)
+---@return boolean
 function Enemy:_groundAheadX(dirX)
     if dirX == 0 then return true end
 
@@ -357,6 +421,8 @@ function Enemy:_groundAheadX(dirX)
     return false
 end
 
+---Update enemy AI and physics
+---@param player table Player entity reference
 function Enemy:update(dt, player)
     self._damagedThisFrame = false 
     
@@ -621,6 +687,10 @@ function Enemy:draw()
     self:_drawHealthBar()
 end
 
+---Check if player can stomp the enemy
+---@param enemy Enemy The enemy to check
+---@param player table Player entity
+---@return boolean
 function Enemy.checkStomp(enemy, player)
     if not enemy.stompable then return false end
     if not enemy:isAlive() then return false end
@@ -638,6 +708,9 @@ function Enemy.checkStomp(enemy, player)
     return hOverlap and falling and cameFromAbove
 end
 
+---Check if enemy is touching the player
+---@param player table Player entity
+---@return boolean
 function Enemy:isTouching(player)
     if not self:isAlive() then return false end
     return
@@ -647,6 +720,8 @@ function Enemy:isTouching(player)
         self.y + self.height > player.y
 end
 
+---Register player attack hit detection
+---@param Player table Player module reference
 function Enemy.registerPlayerAttack(Player)
     Player.onAttackHit:connect(function(hx, hy, hw, hh)
         local hitCenterX = hx + hw / 2
@@ -686,6 +761,8 @@ function Enemy.registerPlayerAttack(Player)
     end)
 end
 
+---Update all enemies
+---@param player table Player entity
 function Enemy.updateAll(dt, player)
     for _, e in ipairs(Enemy.list) do
         e:update(dt, player)
@@ -719,12 +796,15 @@ function Enemy.updateAll(dt, player)
     end
 end
 
+---Draw all enemies
 function Enemy.drawAll()
     for _, e in ipairs(Enemy.list) do
         e:draw()
     end
 end
 
+---Remove an enemy from the list
+---@param enemy Enemy The enemy to remove
 function Enemy.remove(enemy)
     for i, e in ipairs(Enemy.list) do
         if e == enemy then
@@ -734,10 +814,12 @@ function Enemy.remove(enemy)
     end
 end
 
+---Clear all enemies
 function Enemy.clear()
     Enemy.list = {}
 end
 
+---Update idle bobbing animation
 function Enemy:_updateBob(dt)
     if self.state ~= "alive" or (self.anim and self.type ~= "shooter") then
         self.bobOffset = 0
@@ -762,6 +844,7 @@ function Enemy:_updateBob(dt)
     self.bobSquash = 1 + sinVal * 0.06
 end
 
+---Patrol movement behavior
 function Enemy:_patrol(dt)
     local dest = self.patrolOrigin + self.patrolDir * self.patrolDist
 
@@ -781,6 +864,8 @@ function Enemy:_patrol(dt)
     self:_setAnim("walk")
 end
 
+---Set current animation
+---@param name string Animation name
 function Enemy:_setAnim(name)
     if not self.anim then return end
     if not self.anim.animations[name] then return end
@@ -790,6 +875,7 @@ function Enemy:_setAnim(name)
     self.anim.timer   = 0
 end
 
+---Update animation frame
 function Enemy:_updateAnim(dt)
     if not self.anim then return end
     local a   = self.anim
@@ -815,6 +901,8 @@ function Enemy:_updateAnim(dt)
     end
 end
 
+---Shoot a projectile at the player
+---@param player table Player entity
 function Enemy:_shoot(player)
     if not player.x or not player.y then return end
 
@@ -846,6 +934,8 @@ function Enemy:_shoot(player)
     self:_setAnim("attack")
 end
 
+---Update projectile positions and check collisions
+---@param player table Player entity
 function Enemy:_updateProjectiles(dt, player)
     for i = #self.projectiles, 1, -1 do
         local p = self.projectiles[i]
@@ -876,6 +966,8 @@ function Enemy:_updateProjectiles(dt, player)
     end
 end
 
+---Change health of all alive enemies by a multiplier
+---@param multiplier number Health multiplier
 function Enemy.changeAllEnemiesHealth(multiplier)
     for _, e in ipairs(Enemy.list) do
         if e:isAlive() then
@@ -887,7 +979,6 @@ function Enemy.changeAllEnemiesHealth(multiplier)
 end
 
 Enemy.onDied:connect(function(e)
-    -- e : enemy
     _G.getPlayer().addPoints(100, e)
 end)
 
