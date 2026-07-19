@@ -783,6 +783,10 @@ function Enemy.updateAll(dt, player)
                 else
                     if player.takeDamage then
                         player:takeDamage(e.damage)
+                        if player.takeKnockback then
+                            local dir = (e.x + e.width/2 < player.x + player.width/2) and 1 or -1
+                            player:takeKnockback(dir * 300)
+                        end
                     end
                 end
             end

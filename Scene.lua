@@ -147,7 +147,7 @@ function Scene.change(name, doFade, callback)
     local Player = require("entities.Player")
     Player.currentCollision = nil
 
-    local nonGame = { Menu = true, Settings = true, UserCreator = true, MapSelector = true }
+    local nonGame = { Menu = true, Settings = true, UserCreator = true, MapSelector = true, Demo = true }
 
     local function changeNow()
         if callback then callback() end
