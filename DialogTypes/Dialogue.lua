@@ -27,7 +27,7 @@ local Dialogue = {
     letterSpacing = 2,
 
     portraitSize = 64,
-    portraitGap = 12,
+    portraitGap = 16,
 
     lines = {},
     lineChars = {},
@@ -396,7 +396,9 @@ function Dialogue.draw()
 
         love.graphics.setColor(1, 1, 1)
         love.graphics.rectangle("line", textX, textY, pSize, pSize)
-        love.graphics.draw(Dialogue.portrait, textX + (pSize - pw * scale) / 2, textY + (pSize - ph * scale) / 2, 0, scale, scale)
+
+        local drawScale = scale * 0.8
+        love.graphics.draw(Dialogue.portrait, textX + (pSize - pw * drawScale) / 2, textY + (pSize - ph * drawScale) / 2, 0, drawScale, drawScale)
 
         textX = textX + pSize + Dialogue.portraitGap
     end

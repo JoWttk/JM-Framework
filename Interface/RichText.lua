@@ -9,6 +9,8 @@ local function parse(text)
 
     while i <= #text do
         local colorStart, colorEnd = text:find("%[color=#[%x][%x][%x][%x][%x][%x]%]", i)
+        local handledColor = false
+
         if colorStart and colorStart == i then
             local colorHex = text:sub(colorStart + 7, colorEnd - 1)
             local closeTag = text:find("%[/color%]", colorEnd + 1)
@@ -20,34 +22,34 @@ local function parse(text)
                     color = colorHex
                 })
                 i = closeTag + 8
-                goto continue
+                handledColor = true
             end
         end
 
-        local startPos, endPos = text:find("{.-}", i)
+        if not handledColor then
+            local startPos, endPos = text:find("{.-}", i)
 
-        if startPos and startPos == i then
-            local iconName = text:sub(startPos + 1, endPos - 1)
-            table.insert(tokens, {
-                type = "icon",
-                value = iconName
-            })
-            i = endPos + 1
-        else
-            local nextSpecial = #text + 1
-            local nextColor = text:find("%[color=#[%x][%x][%x][%x][%x][%x]%]", i)
-            local nextIcon = text:find("{", i)
-            if nextColor then nextSpecial = math.min(nextSpecial, nextColor) end
-            if nextIcon then nextSpecial = math.min(nextSpecial, nextIcon) end
+            if startPos and startPos == i then
+                local iconName = text:sub(startPos + 1, endPos - 1)
+                table.insert(tokens, {
+                    type = "icon",
+                    value = iconName
+                })
+                i = endPos + 1
+            else
+                local nextSpecial = #text + 1
+                local nextColor = text:find("%[color=#[%x][%x][%x][%x][%x][%x]%]", i)
+                local nextIcon = text:find("{", i)
+                if nextColor then nextSpecial = math.min(nextSpecial, nextColor) end
+                if nextIcon then nextSpecial = math.min(nextSpecial, nextIcon) end
 
-            table.insert(tokens, {
-                type = "text",
-                value = text:sub(i, nextSpecial - 1)
-            })
-            i = nextSpecial
+                table.insert(tokens, {
+                    type = "text",
+                    value = text:sub(i, nextSpecial - 1)
+                })
+                i = nextSpecial
+            end
         end
-
-        ::continue::
     end
 
     return tokens
