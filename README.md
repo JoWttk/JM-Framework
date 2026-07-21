@@ -11,10 +11,16 @@ After adding the framework to your project, you can require it inside your code.
 local engine = require("engine")
 ```
 
-<br>
+### Can can I program using the engine? ###
+Below this, you will see some examples of coding with engine / framework.
+
+**You can see ALL code documentation in:** COMING SOON
+
 <br>
 
-**EXAMPLE: *Platform***
+## **Examples:** ##
+
+#### *Platform:* ####
 ```lua
 local Platform = require("engine/EntitySystem/Platform.lua")
 local P = Platform.new(
