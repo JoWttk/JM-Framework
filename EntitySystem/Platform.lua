@@ -28,6 +28,7 @@ local Camera = require "engine.EntitySystem.Camera"
 ---@field onTouch function|nil Touch event callback
 ---@field setRotation function
 ---@field setPolygon function
+---@field setCornerRadius function
 local Platform = {}
 
 Platform.list = {}

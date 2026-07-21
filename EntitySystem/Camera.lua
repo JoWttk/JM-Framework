@@ -10,7 +10,7 @@
 ---@field _followY number Internal tracked Y follow position
 ---@field bounds { enabled: boolean, minX: number | nil, minY: number | nil, maxX: number, maxY: number | nil } Camera movement boundaries
 ---@field deadzone { enabled: boolean, width: number, height: number } Deadzone for camera follow
----@field shake { duration: number, intensity: number } Screen shake parameters
+---@field shake { duration: number, intensity: number, callback: function | nil } Screen shake parameters
 ---@field shakeOffsetX number Current X shake offset
 ---@field shakeOffsetY number Current Y shake offset
 local Camera = {}
@@ -166,9 +166,10 @@ end
 ---Start screen shake effect
 ---@param duration number Shake duration in seconds
 ---@param intensity number Shake intensity
-function Camera.startShake(duration, intensity)
+function Camera.startShake(duration, intensity, callback)
     Camera.shake.duration = duration
     Camera.shake.intensity = intensity
+    Camera.shake.callback = callback or nil
 end
 
 ---Update screen shake effect
@@ -177,6 +178,15 @@ function Camera.updateShake(dt)
         Camera.shake.duration = Camera.shake.duration - dt
         Camera.shakeOffsetX = (math.random() - 0.5) * 2 * Camera.shake.intensity
         Camera.shakeOffsetY = (math.random() - 0.5) * 2 * Camera.shake.intensity
+
+        if Camera.shake.duration <= 0 then
+            Camera.shakeOffsetX = 0
+            Camera.shakeOffsetY = 0
+            if Camera.shake.callback then
+                Camera.shake.callback()
+                Camera.shake.callback = nil
+            end
+        end
     else
         Camera.shakeOffsetX = 0
         Camera.shakeOffsetY = 0
