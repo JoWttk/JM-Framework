@@ -1,7 +1,5 @@
 local Progress = {}
 
-local Save = require("engine.Save")
-
 local ChapterS = 3
 local LEVELS_PER_Chapter = 6
 

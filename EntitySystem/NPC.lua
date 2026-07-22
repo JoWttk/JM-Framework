@@ -13,13 +13,6 @@ NPC.__index = NPC
 NPC.list = {}
 NPC.interactionDist = 40
 
-local Window = require("engine.Interface.window")
-local Dialogue = require("engine.DialogTypes.Dialogue")
-local Input  = require("engine.Input")
-local Player = require("entities.Player")
-local Components = require("engine.EntitySystem.Components")
-local Signal = require("engine.Utils.signal")
-
 local windowOwnedByNPC = false
 
 ---Create a new NPC

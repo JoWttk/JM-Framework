@@ -29,6 +29,7 @@ local Camera = require "engine.EntitySystem.Camera"
 ---@field setRotation function
 ---@field setPolygon function
 ---@field setCornerRadius function
+---@field tweenTo function
 local Platform = {}
 
 Platform.list = {}
@@ -143,7 +144,6 @@ end
 ---@param pushable boolean
 ---@return Platform
 function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visible, breakable, breakSide, onBreak, tileTexture, layer, pushable)
-    local Player = require("entities.Player")
     local platform = {
         x = x,
         y = y,

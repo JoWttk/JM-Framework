@@ -14,9 +14,6 @@ local Input = {
     mouseY = 0
 }
 
-local SimpleD = require("engine.DialogTypes.SimpleDialogue")
-local UI = require("engine.Interface.UI")
-
 ---Clears single-frame press state. Called automatically on LOVE update.
 function Input.update()
     Input.keysPressed = {}
@@ -29,7 +26,6 @@ function Input.keypressed(key)
     Input.keysDown[key] = true
     Input.keysPressed[key] = true
     
-    local Dialogue = require("engine.DialogTypes.Dialogue")
     if key == "return" and SimpleD.isActive() then
         SimpleD.advance()
     elseif key == "return" and Dialogue.isActive() then

@@ -4,8 +4,56 @@
 local Scene = {}
 local current = nil
 local scenes = {}
+local scenePaths = {} -- scene name -> full dotted require path (e.g. "scenes.levels.Chapter1.Chapter1_Level1")
 
-local Table = require("engine.Utils.Table")
+---Folders inside "scenes" that hold helper modules, not scenes, and should be skipped when scanning.
+local IGNORED_FOLDERS = { utils = true }
+
+---Recursively walk a directory (relative to the save/source root) looking for .lua scene files,
+---registering each one's full dotted require path keyed by its filename (without extension).
+---@param dir string Directory to scan (e.g. "scenes")
+local function scanDir(dir)
+    local items = love.filesystem.getDirectoryItems(dir)
+
+    for _, item in ipairs(items) do
+        local fullPath = dir .. "/" .. item
+        local info = love.filesystem.getInfo(fullPath)
+        if info then
+            if info.type == "directory" then
+                if not IGNORED_FOLDERS[item] then
+                    scanDir(fullPath)
+                end
+            elseif info.type == "file" and item:match("%.lua$") then
+                local name = item:gsub("%.lua$", "")
+                local dotted = fullPath:gsub("/", "."):gsub("%.lua$", "")
+                scenePaths[name] = dotted
+            end
+        end
+    end
+end
+
+---Scan the "scenes" folder (and all its subfolders, e.g. levels/Chapter1, cut-scenes)
+---and rebuild the name -> require path lookup table. Safe to call again to pick up new files.
+function Scene.scan()
+    scenePaths = {}
+    scanDir("scenes")
+end
+
+---Get the full dotted require path for a scene name (e.g. "Chapter1_Level1" ->
+---"scenes.levels.Chapter1.Chapter1_Level1"), wherever it lives inside scenes/.
+---@param name string Scene identifier
+---@return string
+function Scene.getPath(name)
+    return scenePaths[name] or ("scenes." .. name)
+end
+
+---Scan the scenes folder and automatically register every scene found (in any subfolder).
+function Scene.registerAll()
+    Scene.scan()
+    for name, path in pairs(scenePaths) do
+        scenes[name] = require(path)
+    end
+end
 
 local activeFade = nil
 
@@ -89,7 +137,7 @@ end
 ---Get the currently loaded scene module from the global CURRENT_SCENE.
 ---@return table
 function Scene.getCurrentModule()
-    return require("scenes." .. CURRENT_SCENE)
+    return require(Scene.getPath(CURRENT_SCENE))
 end
 
 ---Get the currently active scene.
@@ -144,7 +192,6 @@ function Scene.change(name, doFade, callback)
     local scene = scenes[name]
     if not scene then return end
 
-    local Player = require("entities.Player")
     Player.currentCollision = nil
 
     local nonGame = { Menu = true, Settings = true, UserCreator = true, MapSelector = true, Demo = true }
@@ -159,7 +206,7 @@ function Scene.change(name, doFade, callback)
         if CURRENT_SCENE_MODULE then 
             package.loaded[CURRENT_SCENE_MODULE] = nil
         end
-        CURRENT_SCENE_MODULE = require("scenes." .. CURRENT_SCENE)
+        CURRENT_SCENE_MODULE = require(Scene.getPath(CURRENT_SCENE))
 
         if current.load then current.load() end
         

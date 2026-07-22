@@ -399,7 +399,6 @@ function MobileControls.injectInput(Input, Scene)
     if not IS_MOBILE or not MobileControls.active then return end
 
     if MobileControls.wasInteractPressed() then
-        local SimpleD = require("engine.DialogTypes.SimpleDialogue")
         if SimpleD.isActive() then
             Input.keypressed("return")
         else

@@ -71,11 +71,6 @@
 local Enemy = {}
 Enemy.__index = Enemy
 
-local Text     = require("engine.Interface.text")
-local Dissolve = require("engine.Shaders.Dissolve")
-local Signal   = require("engine.Utils.signal")
-local Platform = require("engine.EntitySystem.Platform")
-
 Enemy.list   = {}
 Enemy.onDied = Signal.new()
 

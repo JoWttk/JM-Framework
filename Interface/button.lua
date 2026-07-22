@@ -1,5 +1,3 @@
-local UI = require("engine.Interface.UI")
-
 local InterfaceButton = {}
 
 function InterfaceButton:new(x, y, width, height, bgColor, text, textColor, font, fontSize, strokeWidth, strokeColor, onClick, hoverStyle)

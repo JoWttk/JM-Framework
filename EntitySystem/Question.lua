@@ -1,6 +1,3 @@
-local NPC = require("engine.EntitySystem.NPC")
-local Signal = require("engine.Utils.signal")
-
 ---@class Question
 ---@field owner string Name of the question owner (NPC)
 ---@field name string Unique name identifier for the question

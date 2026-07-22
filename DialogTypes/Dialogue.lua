@@ -1,5 +1,3 @@
-local Input = require("engine.Input")
-
 local Dialogue = {
     active = false,
     steps = {},

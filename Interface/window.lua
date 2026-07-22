@@ -1,5 +1,3 @@
-local RichText = require("engine.Interface.RichText")
-
 local Window = {
     active = false,
     fullText = "",
@@ -103,7 +101,6 @@ end
 function Window.draw()
     if not Window.active then return end
 
-    local Player = require("entities.Player")
     Window.loadFont()
 
     local previousFont = love.graphics.getFont()

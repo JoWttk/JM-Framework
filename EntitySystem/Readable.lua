@@ -15,9 +15,6 @@ Readable.list = {}
 Readable.current = nil
 Readable.__index = Readable
 
-local Input = require("engine.Input")
-local tweenLib = require("engine.Utils.tween")
-
 ---Create a new readable object
 ---@param x number X position
 ---@param y number Y position
@@ -53,7 +50,7 @@ function Readable:new(x, y, image, font, text, scale, onclose)
     read.displayW = displayW
     read.displayH = displayH
 
-    read.activeTween = tweenLib.to(read, { y = finalY, alpha = 1 }, 0.6, tweenLib.easing.outQuad)
+    read.activeTween = Tween.to(read, { y = finalY, alpha = 1 }, 0.6, Tween.easing.outQuad)
 
     local pad = 32
     local maxTextW = math.max(displayW - pad * 2, 10)
@@ -138,7 +135,7 @@ function Readable:destroy(read)
     for i, v in ipairs(Readable.list) do
         if v == read then
             if v.activeTween then
-                tweenLib.cancel(v.activeTween)
+                Tween.cancel(v.activeTween)
             end
             table.remove(Readable.list, i)
             break
@@ -150,7 +147,7 @@ end
 function Readable.clear()
     for _, v in ipairs(Readable.list) do
         if v.activeTween then
-            tweenLib.cancel(v.activeTween)
+            Tween.cancel(v.activeTween)
         end
     end
     Readable.list = {}

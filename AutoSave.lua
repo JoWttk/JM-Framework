@@ -10,8 +10,6 @@ local AutoSave = {
     pending = {}
 }
 
-local Save = require("engine.Save")
-
 ---Mark the auto-save system as dirty, scheduling a save.
 ---@param payload table|nil Optional data to include in the next save
 function AutoSave.markDirty(payload)

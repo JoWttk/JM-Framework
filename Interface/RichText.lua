@@ -1,4 +1,7 @@
+local Table = require "engine.Utils.Table"
 local RichText = {}
+
+local EXTRAS = { "SPACE", "BACKSPACE" }
 
 ---Parse text into tokens supporting {icon}, [color=#RRGGBB]text[/color], and plain text.
 ---@param text string The input text to parse
@@ -30,10 +33,15 @@ local function parse(text)
             local startPos, endPos = text:find("{.-}", i)
 
             if startPos and startPos == i then
-                local iconName = text:sub(startPos + 1, endPos - 1)
+                local rawName = text:sub(startPos + 1, endPos - 1)
+                local iconName, scaleStr = rawName:match("^(.-):([%d%.]+)$")
+                if not iconName then
+                    iconName = rawName
+                end
                 table.insert(tokens, {
                     type = "icon",
-                    value = iconName
+                    value = iconName,
+                    scale = scaleStr and tonumber(scaleStr) or nil
                 })
                 i = endPos + 1
             else
@@ -101,7 +109,7 @@ local function hexToRGB(hex)
 end
 
 local function getIconImage(name)
-    if name == "SPACE" then
+    if Table.find(EXTRAS, name) then
         return KEY_ICONS_EXTRA
     end
     
@@ -126,8 +134,9 @@ function RichText.measure(text, scale, iconScale)
         elseif token.type == "icon" then
             local quad = ICONS[token.value]
             if quad then
+                local thisIconScale = iconScale * (token.scale or 1)
                 local _, _, iconW = quad:getViewport()
-                w = w + iconW * iconScale + 2
+                w = w + iconW * thisIconScale + 2
             else
                 w = w + font:getWidth("{" .. token.value .. "}") * scale
             end
@@ -144,7 +153,8 @@ end
 ---@param scale number|nil Font scale (default 1)
 ---@param iconScale number|nil Icon scale (default = scale)
 ---@param halign string|nil Horizontal alignment: "left" (default), "center", "right"
-function RichText.draw(text, x, y, scale, iconScale, halign)
+---@param forceColor table|nil If set ({r,g,b[,a]}), overrides ALL token colors (including [color=] tags and icon tint) with this color. Useful for drawing a uniform stroke/outline pass regardless of inline color tags.
+function RichText.draw(text, x, y, scale, iconScale, halign, forceColor)
     x = x or 0
     y = y or 0
     scale = scale or 1
@@ -163,27 +173,37 @@ function RichText.draw(text, x, y, scale, iconScale, halign)
 
     for _, token in ipairs(tokens) do
         if token.type == "text" then
+            if forceColor then love.graphics.setColor(forceColor) end
             love.graphics.print(token.value, posX, y, 0, scale, scale)
             posX = posX + font:getWidth(token.value) * scale
 
         elseif token.type == "colored" then
-            local r, g, b = hexToRGB(token.color)
-            love.graphics.setColor(r, g, b)
+            if forceColor then
+                love.graphics.setColor(forceColor)
+            else
+                local r, g, b = hexToRGB(token.color)
+                love.graphics.setColor(r, g, b)
+            end
             love.graphics.print(token.value, posX, y, 0, scale, scale)
-            love.graphics.setColor(1, 1, 1)
+            if not forceColor then
+                love.graphics.setColor(1, 1, 1)
+            end
             posX = posX + font:getWidth(token.value) * scale
 
         elseif token.type == "icon" then
             local quad = ICONS[token.value]
 
             if quad then
+                if forceColor then love.graphics.setColor(forceColor) end
+                local thisIconScale = iconScale * (token.scale or 1)
                 local iconImage = getIconImage(token.value)
                 local _, _, w, h = quad:getViewport()
-                local iconY = y + (font:getHeight() - h * iconScale) * 0.5
+                local iconY = y + (font:getHeight() - h * thisIconScale) * 0.5
 
-                love.graphics.draw(iconImage, quad, posX, iconY, 0, iconScale, iconScale)
-                posX = posX + w * iconScale + 2
+                love.graphics.draw(iconImage, quad, posX, iconY, 0, thisIconScale, thisIconScale)
+                posX = posX + w * thisIconScale + 2
             else
+                if forceColor then love.graphics.setColor(forceColor) end
                 local txt = "{" .. token.value .. "}"
                 love.graphics.print(txt, posX, y, 0, scale, scale)
                 posX = posX + font:getWidth(txt) * scale
@@ -192,7 +212,7 @@ function RichText.draw(text, x, y, scale, iconScale, halign)
     end
 end
 
-function RichText.drawWrapped(text, x, y, maxWidth, lineHeight, scale, iconScale)
+function RichText.drawWrapped(text, x, y, maxWidth, lineHeight, scale, iconScale, forceColor)
     scale = scale or 1
     iconScale = iconScale or scale
     local font = love.graphics.getFont()
@@ -202,23 +222,33 @@ function RichText.drawWrapped(text, x, y, maxWidth, lineHeight, scale, iconScale
         local posX = x
         for _, token in ipairs(lineTokens) do
             if token.type == "text" then
+                if forceColor then love.graphics.setColor(forceColor) end
                 love.graphics.print(token.value, posX, currentY, 0, scale, scale)
                 posX = posX + token.width
             elseif token.type == "colored" then
-                local r, g, b = hexToRGB(token.color)
-                love.graphics.setColor(r, g, b)
+                if forceColor then
+                    love.graphics.setColor(forceColor)
+                else
+                    local r, g, b = hexToRGB(token.color)
+                    love.graphics.setColor(r, g, b)
+                end
                 love.graphics.print(token.value, posX, currentY, 0, scale, scale)
-                love.graphics.setColor(1, 1, 1)
+                if not forceColor then
+                    love.graphics.setColor(1, 1, 1)
+                end
                 posX = posX + font:getWidth(token.value) * scale
             else
                 local quad = ICONS[token.value]
                 if quad then
+                    if forceColor then love.graphics.setColor(forceColor) end
+                    local thisIconScale = iconScale * (token.scale or 1)
                     local iconImage = getIconImage(token.value)
                     local _, _, w, h = quad:getViewport()
-                    local iconY = currentY + (font:getHeight() - h * iconScale) * 0.5
-                    love.graphics.draw(iconImage, quad, posX, iconY, 0, iconScale, iconScale)
-                    posX = posX + w * iconScale + 2
+                    local iconY = currentY + (font:getHeight() - h * thisIconScale) * 0.5
+                    love.graphics.draw(iconImage, quad, posX, iconY, 0, thisIconScale, thisIconScale)
+                    posX = posX + w * thisIconScale + 2
                 else
+                    if forceColor then love.graphics.setColor(forceColor) end
                     local txt = "{" .. token.value .. "}"
                     love.graphics.print(txt, posX, currentY, 0, scale, scale)
                     posX = posX + font:getWidth(txt) * scale
@@ -258,8 +288,9 @@ function RichText.drawWrapped(text, x, y, maxWidth, lineHeight, scale, iconScale
                 local quad = ICONS[token.value]
                 local iconWidth
                 if quad then
+                    local thisIconScale = iconScale * (token.scale or 1)
                     local _, _, w, h = quad:getViewport()
-                    iconWidth = w * iconScale + 2
+                    iconWidth = w * thisIconScale + 2
                 else
                     iconWidth = font:getWidth("{" .. token.value .. "}") * scale
                 end
@@ -347,8 +378,9 @@ function RichText.measureWrapped(text, x, maxWidth, scale, iconScale)
                 local quad = ICONS[token.value]
                 local iconWidth
                 if quad then
+                    local thisIconScale = iconScale * (token.scale or 1)
                     local _, _, w, _ = quad:getViewport()
-                    iconWidth = w * iconScale + 2
+                    iconWidth = w * thisIconScale + 2
                 else
                     iconWidth = font:getWidth("{" .. token.value .. "}") * scale
                 end

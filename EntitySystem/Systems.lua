@@ -1,5 +1,3 @@
-local Components = require("engine.EntitySystem.Components")
-
 ---@class Systems
 local Systems = {}
 
