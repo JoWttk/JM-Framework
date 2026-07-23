@@ -41,3 +41,4 @@ Systems = require("engine.EntitySystem.Systems")    -- needs Components
 NPC = require("engine.EntitySystem.NPC")
 Question = require("engine.EntitySystem.Question")
 ScreenshotTaken = require("engine.Utils.screenshotTaken")
+Camera = require("engine.EntitySystem.Camera")

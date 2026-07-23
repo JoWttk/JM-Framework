@@ -30,6 +30,8 @@ local Camera = require "engine.EntitySystem.Camera"
 ---@field setPolygon function
 ---@field setCornerRadius function
 ---@field tweenTo function
+---@field setCollision function
+---@field getCollision function
 local Platform = {}
 
 Platform.list = {}
@@ -222,6 +224,32 @@ function Platform.new(x, y, w, h, color, texture, tag, canCollide, alpha, visibl
         if self.pushable then
             Player.PushEvent:fire()
         end
+    end
+
+    ---@param mode "full" | "x" | "y" | nil 
+    ---@param side "left" | "right" | "top" | "bottom" | nil 
+    function platform:setCollision(mode, side)
+        self.collisionMode = mode or "full"
+        self.collisionSide = side
+        return self
+    end
+
+    function platform:getCollisionRect()
+        local x, y, w, h = self.x, self.y, self.w, self.h
+
+        if self.collisionMode == "x" then
+            w = w / 2
+            if self.collisionSide == "right" then
+                x = x + w
+            end
+        elseif self.collisionMode == "y" then
+            h = h / 1.75
+            if self.collisionSide == "bottom" then
+                y = y + h
+            end
+        end
+
+        return x, y, w, h
     end
 
     ---@param x number desired X pos

@@ -51,6 +51,9 @@ function task.cancel(co)
 	return false
 end
 
+function task.cancelAll()
+end
+
 function task.step(dt)
 	now = now + dt
 

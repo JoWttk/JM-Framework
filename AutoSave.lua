@@ -36,16 +36,6 @@ function AutoSave.saveNow()
         end
     end
 
-    local ok, Progress = pcall(require, "engine.Progress")
-    if ok and Progress and Progress.save then
-        Progress.save()
-
-        local okp, Poki = pcall(require, "engine.Web.Poki")
-        if okp and Poki and Poki.saveProgress then
-            pcall(function() Poki.saveProgress("progress", Save.read("progress.txt") or {}) end)
-        end
-    end
-
     local ok2, Settings = pcall(require, "scenes.Settings")
     if ok2 and Settings and Settings.save then
         Settings.save()

@@ -134,7 +134,7 @@ end
 ---Set camera movement boundaries
 ---@param minX number | nil Minimum X bound
 ---@param minY number | nil Minimum Y bound
----@param maxX number Maximum X bound
+---@param maxX number | nil Maximum X bound
 ---@param maxY number | nil Maximum Y bound
 function Camera.setBounds(minX, minY, maxX, maxY)
     Camera.bounds.enabled = true
