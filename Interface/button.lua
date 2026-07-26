@@ -41,7 +41,7 @@ function InterfaceButton:new(x, y, width, height, bgColor, text, textColor, font
         local dx = cx - dw / 2 + offX
         local dy = cy - dh / 2
 
-        love.graphics.setColor(0, 0, 0, 0.25)
+        love.graphics.setColor(0, 0, 0, 0.25 * (self.bgColor[4] or 1))
         love.graphics.rectangle("fill", dx + 4, dy + 4, dw, dh, cornerRadius)
 
         if self.hoverStyle == "glow" and self._glow > 0.01 then

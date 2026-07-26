@@ -32,6 +32,7 @@ local Camera = require "engine.EntitySystem.Camera"
 ---@field tweenTo function
 ---@field setCollision function
 ---@field getCollision function
+---@field setStroke function
 local Platform = {}
 
 Platform.list = {}
@@ -490,6 +491,20 @@ local function drawSinglePlatform(platform)
                 love.graphics.rectangle("fill", platform.x, platform.y, platform.w, platform.h, platform.cornerRadiusX, platform.cornerRadiusY)
             else
                 love.graphics.rectangle("fill", platform.x, platform.y, platform.w, platform.h)
+            end
+
+            if platform.stroke then
+                local sc = platform.strokeColor or {1, 1, 1, 1}
+                love.graphics.setColor(sc[1], sc[2], sc[3], sc[4])
+                love.graphics.setLineWidth(2)
+
+                if isCirc then
+                    love.graphics.circle("line", platform.x, platform.y, platform.radius)
+                elseif hasCorner then
+                    love.graphics.rectangle("line", platform.x, platform.y, platform.w, platform.h, platform.cornerRadiusX, platform.cornerRadiusY)
+                else
+                    love.graphics.rectangle("line", platform.x, platform.y, platform.w, platform.h)
+                end
             end
         end
 
