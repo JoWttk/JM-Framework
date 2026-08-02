@@ -376,13 +376,25 @@ local function stencilFunctionFor(platform, radius)
     love.graphics.circle("fill", platform.texture:getWidth() / 2, platform.texture:getHeight() / 2, radius)
 end
 
+local function canUseStencil()
+    local canvas = love.graphics.getCanvas()
+    -- If a Canvas is active, stencil may not work unless it was created with stencil=true
+    return canvas == nil
+end
+
 local function drawCircleTexture(platform, radius)
     love.graphics.push()
     love.graphics.translate(platform.x, platform.y)
-    love.graphics.stencil(function() stencilFunctionFor(platform, radius) end, "replace", 1)
-    love.graphics.setStencilTest("greater", 0)
-    love.graphics.draw(platform.texture, 0, 0)
-    love.graphics.setStencilTest()
+    if canUseStencil() then
+        love.graphics.stencil(function() stencilFunctionFor(platform, radius) end, "replace", 1)
+        love.graphics.setStencilTest("greater", 0)
+        love.graphics.draw(platform.texture, 0, 0)
+        love.graphics.setStencilTest()
+    else
+        local scaleX = platform.w / (radius * 2)
+        local scaleY = platform.h / (radius * 2)
+        love.graphics.draw(platform.texture, 0, 0, 0, scaleX, scaleY)
+    end
     love.graphics.pop()
 end
 
@@ -393,21 +405,36 @@ end
 local function drawRoundedTexture(platform, rx, ry)
     love.graphics.push()
     love.graphics.translate(platform.x, platform.y)
-    love.graphics.stencil(function() stencilRoundedRectFor(platform, rx, ry) end, "replace", 1)
-    love.graphics.setStencilTest("greater", 0)
+    
+    if canUseStencil() then
+        love.graphics.stencil(function() stencilRoundedRectFor(platform, rx, ry) end, "replace", 1)
+        love.graphics.setStencilTest("greater", 0)
 
-    if platform.tileTexture then
-        for _, q in ipairs(platform._quads) do
-            love.graphics.draw(platform.texture, q.quad, q.x, q.y)
+        if platform.tileTexture then
+            for _, q in ipairs(platform._quads) do
+                love.graphics.draw(platform.texture, q.quad, q.x, q.y)
+            end
+        else
+            local texW, texH = platform.texture:getDimensions()
+            local scaleX = platform.w / texW
+            local scaleY = platform.h / texH
+            love.graphics.draw(platform.texture, 0, 0, 0, scaleX, scaleY)
         end
-    else
-        local texW, texH = platform.texture:getDimensions()
-        local scaleX = platform.w / texW
-        local scaleY = platform.h / texH
-        love.graphics.draw(platform.texture, 0, 0, 0, scaleX, scaleY)
-    end
 
-    love.graphics.setStencilTest()
+        love.graphics.setStencilTest()
+    else
+        if platform.tileTexture then
+            for _, q in ipairs(platform._quads) do
+                love.graphics.draw(platform.texture, q.quad, q.x, q.y)
+            end
+        else
+            local texW, texH = platform.texture:getDimensions()
+            local scaleX = platform.w / texW
+            local scaleY = platform.h / texH
+            love.graphics.draw(platform.texture, 0, 0, 0, scaleX, scaleY)
+        end
+    end
+    
     love.graphics.pop()
 end
 

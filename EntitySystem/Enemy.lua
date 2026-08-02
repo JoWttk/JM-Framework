@@ -359,6 +359,8 @@ function Enemy:_applyGravity(dt)
         return
     end
 
+    local prevBottom = self.y + self.height
+
     self.vy = self.vy + GRAVITY * dt
     self.y  = self.y + self.vy * dt
 
@@ -370,7 +372,7 @@ function Enemy:_applyGravity(dt)
             local overlapY = self.y < platform.y + platform.h and self.y + self.height > platform.y
 
             if overlapX and overlapY then
-                if self.vy > 0 then
+                if self.vy >= 0 and prevBottom <= platform.y + 0.5 then
                     self.y = platform.y - self.height
                     self.vy = 0
                     self.grounded = true
@@ -393,6 +395,9 @@ function Enemy:_fallIntoVoid()
     self:startDeath()
 end
 
+local LEDGE_CHECK_AHEAD = 6
+local LEDGE_CHECK_DEPTH = 6
+local LEDGE_CHECK_DEPTH_FLOATING = 80  -- alcance maior pra quem flutua
 ---Check if there is ground ahead in given direction
 ---@param dirX number Direction to check (-1, 0, or 1)
 ---@return boolean
@@ -405,11 +410,9 @@ function Enemy:_groundAheadX(dirX)
     local checkY = self.y + self.height + LEDGE_CHECK_DEPTH
 
     for _, platform in ipairs(Platform.list) do
-        if platform.canCollide then
-            if checkX >= platform.x and checkX <= platform.x + platform.w
-            and checkY >= platform.y and checkY <= platform.y + platform.h then
-                return true
-            end
+        if checkX >= platform.x and checkX <= platform.x + platform.w
+        and checkY >= platform.y and checkY <= platform.y + platform.h then
+            return true
         end
     end
 
@@ -820,7 +823,7 @@ end
 
 ---Update idle bobbing animation
 function Enemy:_updateBob(dt)
-    if self.state ~= "alive" or (self.anim and self.type ~= "shooter") then
+    if self.state ~= "alive" or self.anim then
         self.bobOffset = 0
         self.bobSquash = 1
         return
@@ -851,9 +854,7 @@ function Enemy:_patrol(dt)
         self.patrolDir = -1
     elseif self.patrolDir == -1 and self.x <= self.patrolOrigin - self.patrolDist then
         self.patrolDir = 1
-    end
-
-    if self.noGravity and not self:_groundAheadX(self.patrolDir) then
+    elseif self.noGravity and not self:_groundAheadX(self.patrolDir) then
         self.patrolDir = -self.patrolDir
     end
 
@@ -887,13 +888,15 @@ function Enemy:_updateAnim(dt)
         a.frame = a.frame + 1
         if a.frame > #cur.frames then
             a.frame = 1
-            
-            if a.current == "attack" and self.onAttackEnd then
+
+            local wasAttack = (a.current == "attack")
+
+            if wasAttack and self.onAttackEnd then
                 self.onAttackEnd(self)
                 self.onAttackEnd = nil
             end
-            
-            if a.current == "attack" then
+
+            if wasAttack and a.current == "attack" then
                 a.current = "walk"
             end
         end
