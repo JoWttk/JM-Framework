@@ -1,6 +1,9 @@
 ---@class SaveTXT
 local SaveTXT = {}
 
+-- Cache em memória para evitar leituras repetidas do disco
+local cache = {}
+
 ---Convert a Lua value to its string representation for saving.
 ---@param v any Value to convert (boolean, number, string)
 ---@return string
@@ -40,6 +43,9 @@ function SaveTXT.write(filename, data)
 
     table.sort(lines)
     love.filesystem.write(filename, table.concat(lines, "\n") .. "\n")
+
+    -- Atualiza o cache em memória
+    cache[filename] = data
 end
 
 ---Read and parse a key-value text file back into a table.
@@ -47,7 +53,13 @@ end
 ---@param filename string Save file name to read
 ---@return table|nil Parsed data table, or nil if file doesn't exist
 function SaveTXT.read(filename)
+    -- Retorna do cache se disponível
+    if cache[filename] ~= nil then
+        return cache[filename]
+    end
+
     if not love.filesystem.getInfo(filename) then
+        cache[filename] = nil
         return nil
     end
 
@@ -66,6 +78,7 @@ function SaveTXT.read(filename)
         end
     end
 
+    cache[filename] = out
     return out
 end
 
@@ -74,6 +87,17 @@ end
 function SaveTXT.delete(filename)
     if love.filesystem.getInfo(filename) then
         love.filesystem.remove(filename)
+    end
+    cache[filename] = nil
+end
+
+---Clear the in-memory cache for a specific file or all files.
+---@param filename string|nil Save file name to clear, or nil to clear all
+function SaveTXT.clearCache(filename)
+    if filename then
+        cache[filename] = nil
+    else
+        cache = {}
     end
 end
 

@@ -41,6 +41,7 @@ function NPC:new(name, x, y, overrides)
     }
 
     npc.event = Signal:new()
+    npc.nearby = Signal:new()
 
     Window.config({
         offsetX = 15,
@@ -217,7 +218,15 @@ function NPC.updateAll(dt)
 
     for _, npc in ipairs(NPC.list) do
         npc:update(dt)
-        if npc.interactable and npc:isPlayerNearby() then
+
+        local isNear = npc.interactable and npc:isPlayerNearby()
+
+        if isNear ~= npc._wasNear then
+            npc.nearby:fire(isNear)
+            npc._wasNear = isNear
+        end
+
+        if isNear then
             nearAny = true
             nearNPC = npc
         end

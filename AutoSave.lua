@@ -25,6 +25,7 @@ end
 ---Immediately save all pending data (player, progress, settings).
 ---Attempts Poki web save first, falls back to local file save.
 function AutoSave.saveNow()
+    -- Salva apenas o player se houver dados pendentes
     if AutoSave.pending.player then
         local ok, Poki = pcall(require, "engine.Web.Poki")
         if ok and Poki and Poki.saveProgress then
@@ -36,12 +37,15 @@ function AutoSave.saveNow()
         end
     end
 
-    local ok2, Settings = pcall(require, "scenes.Settings")
-    if ok2 and Settings and Settings.save then
-        Settings.save()
-        local okp2, Poki = pcall(require, "engine.Web.Poki")
-        if okp2 and Poki and Poki.saveProgress then
-            pcall(function() Poki.saveProgress("settings", Save.read("settings.txt") or {}) end)
+    -- Salva settings apenas se houver dados pendentes
+    if AutoSave.pending.settings then
+        local ok2, Settings = pcall(require, "scenes.Settings")
+        if ok2 and Settings and Settings.save then
+            Settings.save()
+            local okp2, Poki = pcall(require, "engine.Web.Poki")
+            if okp2 and Poki and Poki.saveProgress then
+                pcall(function() Poki.saveProgress("settings", Save.read("settings.txt") or {}) end)
+            end
         end
     end
 
