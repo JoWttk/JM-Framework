@@ -34,6 +34,7 @@ Scene = require("engine.Scene")                     -- needs Table
 Save = require("engine.Save")
 AutoSave = require("engine.AutoSave")               -- needs Save
 Progress = require("engine.Progress")               -- needs Save
+Levels = require("engine.Levels")                   -- needs Save (registro de capítulos/níveis + progresso)
 MobileControls = require("engine.MobileControls")
 Systems = require("engine.EntitySystem.Systems")    -- needs Components
 

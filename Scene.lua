@@ -1,6 +1,7 @@
 ---@class Scene
 ---@field current table|nil The currently active scene module
 ---@field scenes table<string, table> Registered scene modules
+---@field resize fun(w: number, h: number) Forward resize events to the active scene
 local Scene = {}
 local current = nil
 local scenes = {}
@@ -146,6 +147,15 @@ function Scene.get()
     return current
 end
 
+---Forward a window resize event to the active scene when it handles resizing.
+---@param w number
+---@param h number
+function Scene.resize(w, h)
+    if current and current.resize then
+        current.resize(w, h)
+    end
+end
+
 ---Load a scene directly (no transition).
 ---@param scene string|table Scene name (registered) or scene module
 function Scene.load(scene)
@@ -194,7 +204,7 @@ function Scene.change(name, doFade, callback)
 
     Player.currentCollision = nil
 
-    local nonGame = { Menu = true, Settings = true, UserCreator = true, Demo = true }
+    local nonGame = { Menu = true, Settings = true, UserCreator = true, Demo = true, MapSelector = true }
 
     local function changeNow()
         if callback then callback() end
@@ -209,6 +219,9 @@ function Scene.change(name, doFade, callback)
         CURRENT_SCENE_MODULE = require(Scene.getPath(CURRENT_SCENE))
 
         if current.load then current.load() end
+
+        -- registra o nível no progresso (libera ele e marca como "último nível jogado")
+        if Levels and not nonGame[name] then Levels.onEnter(name) end
         
         if not nonGame[name] then
             love.audio.play(SOUNDS["game-start"])
